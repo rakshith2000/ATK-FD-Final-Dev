@@ -1,0 +1,7 @@
+ITSM_TAG=snow_dev
+ITSM_TYPE=servicenow
+ITSM_AUTH_TYPE=service_account
+ITSM_URL=https://fddev.service-now.com
+ITSM_USER=svc_itops_toolkit
+ITSM_PASSWORD=b2K.YvY.89r5JK4rU=e7]gRJShpsllt:ioDq4WNE
+BEARER_TOKEN=

@@ -1,0 +1,123 @@
+@use 'sass:list';
+
+$status-styles: (
+    'new': (
+        #dcf0d6,
+        #165700,
+    ),
+    'in-progress': (
+        #bbddff,
+        #011a80,
+    ),
+    'on-hold': (
+        #ffe5bb,
+        #c65e08,
+    ),
+    'resolved': (
+        #f8dcfc,
+        #9700ad,
+    ),
+    'closed': (
+        #e1bee7,
+        #4a148c,
+    ),
+    'assess': (
+        #ffe5bb,
+        #c65e08,
+    ),
+    'pending': (
+        #b2f9ff,
+        #0082e6,
+    ),
+    'work-in-progress': (
+        #ffe0b2,
+        #e65100,
+    ),
+);
+
+$priority-styles: (
+    1: (
+        #ffdada,
+        #b71c1c,
+    ),
+    2: (
+        #ffefc8,
+        #8b5e00,
+    ),
+    3: (
+        #ffdb58,
+        #5d4037,
+    ),
+    4: (
+        #d4f0c8,
+        #2e7d32,
+    ),
+    5: (
+        #c8f0d4,
+        #1b5e20,
+    ),
+);
+
+.statusBadge {
+    padding: 8px;
+    border-radius: 12px;
+    font-weight: 600;
+    text-transform: capitalize;
+    letter-spacing: 0.2px;
+    backdrop-filter: blur(10px);
+    border: none;
+    width: max-content;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+
+    @each $name, $colors in $status-styles {
+        &.#{$name} {
+            background: list.nth($colors, 1);
+            color: list.nth($colors, 2) !important;
+        }
+    }
+}
+
+.priorityBadge {
+    padding: 8px;
+    border-radius: 12px;
+    font-weight: 600;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(10px);
+    text-transform: capitalize;
+    letter-spacing: 0.2px;
+    height: 20px;
+    width: max-content;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+
+    @each $level, $colors in $priority-styles {
+        &.p#{$level} {
+            background: linear-gradient(0deg, list.nth($colors, 1), list.nth($colors, 1));
+            color: list.nth($colors, 2) !important;
+        }
+    }
+}
+
+.severityBadge {
+    padding: 8px;
+    border-radius: 12px;
+    font-weight: 600;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(10px);
+    text-transform: capitalize;
+    letter-spacing: 0.2px;
+    height: 20px;
+    width: max-content;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: linear-gradient(0deg, #f3f4f6, #f3f4f6);
+    color: #111827 !important;
+}

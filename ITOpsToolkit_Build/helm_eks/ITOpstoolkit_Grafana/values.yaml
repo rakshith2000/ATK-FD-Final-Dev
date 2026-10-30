@@ -1,0 +1,90 @@
+replicaCount: 1
+
+##########The Below Section is For Volume mounts ###############
+configMaps:
+  - name: grafana
+    destinationPath: /etc/grafana/grafana.ini
+    fileName: grafana.ini
+  # Additional files can be mounted by adding entries in the format above
+  
+
+image:
+  repository: <ECR ARN>/<Repo>
+  pullPolicy: Always
+  tag: "<image-tag>"
+
+
+  ###########For Nginx Ingress Controller########
+# ingress:
+#  className: "nginx"
+################################################
+
+# ############AWS Load Balancer Ingress########## #uncomment as per requirement
+ingress:
+   className: "alb"
+   annotations:
+     alb.ingress.kubernetes.io/group.name: atk-group #This group name can be any name. Try to use the same name for all ATK components to avoid multiple LB creations
+     alb.ingress.kubernetes.io/scheme: internal  #<internet-facing> for internet facing
+     alb.ingress.kubernetes.io/target-type: ip
+     alb.ingress.kubernetes.io/healthcheck-path: /grafana
+     alb.ingress.kubernetes.io/success-codes: "200-399"
+     alb.ingress.kubernetes.io/group.order: "1"
+     alb.ingress.kubernetes.io/healthcheck-port: '<Port>' #3000
+     alb.ingress.kubernetes.io/ssl-redirect: '443'
+     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+     alb.ingress.kubernetes.io/target-group-attributes: stickiness.enabled=true,stickiness.type=lb_cookie,stickiness.lb_cookie.duration_seconds=86400
+     alb.ingress.kubernetes.io/certificate-arn: <ACM ARN>  #Uncomment this line and remove 'secret' block only if ACM is being used for DNS certificates
+
+
+# ###############################################
+
+service:
+  type: ClusterIP
+  port: <Port> #3000
+  targetPort: <Port> #3000
+  
+nameOverride: "itops-grafana"
+fullnameOverride: "itops-platform-itops-grafana"
+
+nodeSelector:
+  <label-key>: <label-value>
+  
+host:
+  name: "<DNS Name>" #without https
+
+# Below secret is for SSL certtificates. Remove this if its not needed 
+secret:
+  name: "<K8s secret name>"
+
+# Uncomment this only if the image is getting pulled from JFrog directly via helms 
+# jfrogSecret:
+#   name: <secret-name>
+
+
+resources:
+  limits:
+    cpu: 1500m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+#Probes can be disabled by setting 'false' for the below fields
+probes:
+  liveness:
+    enabled: true
+    path: /api/health
+  readiness:
+    enabled: true
+    path: /api/health
+    
+env:
+  - name: GF_SECURITY_ADMIN_USER
+    value: "<Admin UserName>"
+  - name: GF_SECURITY_ADMIN_PASSWORD
+    value: "<Admin Password>"
+  - name: GF_SERVER_SERVE_FROM_SUB_PATH
+    value: "true"
+  - name: GF_SERVER_ROOT_URL
+    value: "<DNS>/grafana" #https
+

@@ -1,0 +1,252 @@
+# =============================================================================
+# ATK — CORE machine nginx (10.106.6.15)
+#
+# Name-based virtual hosts — one DNS record per service instead of one DNS
+# record with /api, /auth, /grafana sub-paths.
+#
+#   sso-atkdev.familydollar.com       -> Keycloak      (kept on the /auth sub-path)
+#   vault-atkdev.familydollar.com     -> Vault UI/API
+#   backend-atkdev.familydollar.com   -> Backend API   (/api, /iac_assist_socket, /openapi.json)
+#                              Grafana       (/grafana)  — no DNS of its own
+#                              LiteLLM       (/litellm)  — no DNS of its own
+#
+# The Frontend vhost (autonomousitopstoolkitdev.familydollar.com) lives on the OTHER machine —
+# see ../../ATK-Frontend/config/nginx.conf
+#
+# TLS: all three blocks share one wildcard *.familydollar.com certificate placed in
+#      ssl/fullchain.pem + ssl/privkey.pem.
+# =============================================================================
+
+worker_processes 1;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+    sendfile      on;
+    keepalive_timeout 65;
+
+    client_max_body_size 50m;
+
+    # Docker's embedded DNS — lets proxy_pass use variables so nginx starts even
+    # if an upstream container is not up yet.
+    resolver 127.0.0.11 valid=30s;
+    resolver_timeout 5s;
+
+    # ── Shared TLS settings ────────────────────────────────────────────────────
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    # $connection_upgrade: "upgrade" for WebSocket requests, "close" otherwise.
+    # Used by the Grafana location (Grafana Live streams over WebSocket).
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+
+    # ── HTTP → HTTPS redirect (all hostnames) ──────────────────────────────────
+    server {
+        listen 80 default_server;
+        server_name _;
+        return 301 https://$host$request_uri;
+    }
+
+    # ── Unknown Host on 443 → 404 (keeps a wrong DNS name from hitting an app) ──
+    server {
+        listen 443 ssl default_server;
+        server_name _;
+
+        ssl_certificate     /etc/nginx/ssl/fullchain.pem;
+        ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+
+        return 404;
+    }
+
+    # =========================================================================
+    # KEYCLOAK — https://sso-atkdev.familydollar.com
+    # =========================================================================
+    # Keycloak keeps KC_HTTP_RELATIVE_PATH=/auth, so the realm endpoints stay at
+    # https://sso-atkdev.familydollar.com/auth/realms/<realm>/... — unchanged paths means
+    # no frontend or backend code changes, only the hostname moves.
+
+    server {
+        listen 443 ssl;
+        server_name sso-atkdev.familydollar.com;
+
+        ssl_certificate     /etc/nginx/ssl/fullchain.pem;
+        ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+
+        # Bare hostname → Keycloak welcome/admin page
+        location = / {
+            return 301 https://$host/auth/;
+        }
+
+        # Matches both /auth and /auth/... (no trailing-slash surprises)
+        location /auth {
+            set $upstream_keycloak keycloak:8080;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_pass http://$upstream_keycloak;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header X-Forwarded-Host $host;
+            proxy_set_header X-Forwarded-Port 443;
+            proxy_connect_timeout 30s;
+            proxy_send_timeout    450s;
+            proxy_read_timeout    450s;
+        }
+
+        location / {
+            return 404;
+        }
+    }
+
+    # =========================================================================
+    # VAULT — https://vault-atkdev.familydollar.com
+    # =========================================================================
+    # Replaces the old "port 8443 on the shared DNS" arrangement. Vault UI is at
+    # https://vault-atkdev.familydollar.com/ui (Vault redirects / to /ui itself).
+    # The backend still reaches Vault privately on http://vault:8200 — see
+    # config/.vault_env. Only humans use this vhost.
+    #
+    # [C] EXISTING VAULT (outside this compose)? Delete this whole server block.
+
+    server {
+        listen 443 ssl;
+        server_name vault-atkdev.familydollar.com;
+
+        ssl_certificate     /etc/nginx/ssl/fullchain.pem;
+        ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+
+        location / {
+            set $upstream_vault vault:8200;
+            proxy_http_version 1.1;
+            proxy_pass http://$upstream_vault;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_connect_timeout 30s;
+            proxy_send_timeout    450s;
+            proxy_read_timeout    450s;
+        }
+    }
+
+    # =========================================================================
+    # BACKEND + GRAFANA + LITELLM — https://backend-atkdev.familydollar.com
+    # =========================================================================
+    # Every request here comes from the frontend on https://autonomousitopstollkitdev.familydollar.com, i.e.
+    # cross-origin. FastAPI's own CORSMiddleware (allow_origins=["*"]) answers
+    # the preflights, so nginx does not add CORS headers — adding them here too
+    # would produce duplicate Access-Control-Allow-Origin headers and the
+    # browser would reject the response.
+
+    server {
+        listen 443 ssl;
+        server_name backend-atkdev.familydollar.com;
+
+        ssl_certificate     /etc/nginx/ssl/fullchain.pem;
+        ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+
+        # ── Backend API ─────────────────────────────────────────────────────────
+        # FastAPI runs with root_path="/api", so the /api prefix is forwarded
+        # intact (no trailing URI on proxy_pass). Swagger UI: /api/docs
+        location /api/ {
+            # Variable upstream + resolver: nginx now fronts three vhosts, so a
+            # backend that is slow to start must not stop Keycloak and Vault
+            # from being served. With a literal proxy_pass nginx refuses to
+            # start at all if the name does not resolve yet.
+            set $upstream_backend_api backend:8000;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_pass http://$upstream_backend_api;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_connect_timeout 30s;
+            proxy_send_timeout    450s;
+            proxy_read_timeout    450s;
+        }
+
+        # ── IAC WebSocket ───────────────────────────────────────────────────────
+        # Frontend connects to wss://backend-atkdev.familydollar.com/iac_assist_socket/ws/
+        location /iac_assist_socket/ {
+            set $upstream_backend_ws backend:8000;
+            proxy_http_version 1.1;
+            proxy_pass http://$upstream_backend_ws;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_read_timeout 3600s;
+            proxy_send_timeout 3600s;
+        }
+
+        # ── FastAPI OpenAPI schema ──────────────────────────────────────────────
+        location = /openapi.json {
+            set $upstream_backend backend:8000;
+            proxy_pass http://$upstream_backend/openapi.json;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto https;
+        }
+
+        # ── Grafana (ATK Pulse / Ticket Audit) ──────────────────────────────────
+        # Grafana runs with GF_SERVER_SERVE_FROM_SUB_PATH=true and
+        # GF_SERVER_ROOT_URL=https://backend-atkdev.familydollar.com/grafana, so it expects
+        # to receive the /grafana prefix — do not rewrite it away.
+        location = /grafana {
+            return 301 https://$host/grafana/;
+        }
+        location /grafana/ {
+            set $upstream_grafana grafana:3000;
+            proxy_http_version 1.1;
+            proxy_pass http://$upstream_grafana;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto https;
+            # Grafana Live (dashboard streaming) needs the WebSocket upgrade
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_connect_timeout 30s;
+            proxy_send_timeout    450s;
+            proxy_read_timeout    450s;
+        }
+
+        # ── LiteLLM ─────────────────────────────────────────────────────────────
+        location = /litellm {
+            return 301 https://$host/litellm/;
+        }
+        location /litellm/ {
+            set $upstream_litellm litellm:4000;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_pass http://$upstream_litellm;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_connect_timeout 30s;
+            proxy_send_timeout    450s;
+            proxy_read_timeout    450s;
+        }
+
+        # ── Nothing is served at the root of the API host ───────────────────────
+        location = / {
+            return 301 https://$host/api/docs;
+        }
+        location / {
+            return 404;
+        }
+    }
+}

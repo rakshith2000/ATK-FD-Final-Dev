@@ -1,0 +1,74 @@
+replicaCount: 1
+
+configMaps:
+  - name: config-agent-gateway
+    destinationPath: /config.yaml
+    fileName: config-agent-gateway.yaml
+
+image:
+  repository: <ACR ARN>/<repo name>
+  pullPolicy: Always
+  tag: "<Tag>"
+  
+nameOverride: "itops-agent-gateway-engine"
+fullnameOverride: "itops-platform-itops-agent-gateway-engine"
+
+
+nodeSelector:
+  <label-key>: <label-value>
+
+  
+service:
+  type: ClusterIP
+
+  ports:
+    - name: mcp
+      port: 443
+      targetPort: 443
+
+    - name: llm
+      port: 4000
+      targetPort: 4000
+
+    - name: admin
+      port: 15000
+      targetPort: 15000
+
+    - name: readiness
+      port: 15021
+      targetPort: 15021
+      
+    - name: atkmcp
+      port: 3000
+      targetPort: 3000
+
+
+ingress:
+  enabled: false
+
+pvc:
+  enabled: true
+  storageClassName: managed-csi
+  size: 1Gi
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+    
+#Probes can be disabled by setting 'false' for the below fields
+probes:
+  liveness:
+    enabled: true
+    port: 15000
+
+  readiness:
+    enabled: true
+    port: 15021
+
+env:
+  - name: ADMIN_ADDR
+    value: "0.0.0.0:15000"

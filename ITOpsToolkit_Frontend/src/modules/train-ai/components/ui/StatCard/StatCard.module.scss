@@ -1,0 +1,100 @@
+@use 'sass:list';
+
+$variants: (
+    'navy': (
+        linear-gradient(135deg, #1e3a8a, #1e40af),
+        #ffffff,
+        rgba(255, 255, 255, 0.75),
+    ),
+    'blue': (
+        linear-gradient(135deg, #1d4ed8, #2563eb),
+        #ffffff,
+        rgba(255, 255, 255, 0.8),
+    ),
+    'sky': (
+        linear-gradient(135deg, #2563eb, #3b82f6),
+        #ffffff,
+        rgba(255, 255, 255, 0.85),
+    ),
+    'light': (
+        linear-gradient(135deg, #3b82f6, #60a5fa),
+        #ffffff,
+        rgba(255, 255, 255, 0.9),
+    ),
+    'mint': (
+        linear-gradient(135deg, #d1fae5, #ccfbf1),
+        #0f766e,
+        rgba(15, 118, 110, 0.7),
+    ),
+    'lavender': (
+        linear-gradient(135deg, #ede9fe, #e9d5ff),
+        #6d28d9,
+        rgba(109, 40, 217, 0.7),
+    ),
+);
+
+.card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 16px;
+    border-radius: 12px;
+    min-height: 80px;
+    overflow: hidden;
+    transition:
+        transform 0.18s ease,
+        box-shadow 0.18s ease;
+
+    &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 24px -12px rgba(30, 58, 138, 0.55);
+    }
+
+    @each $name, $tokens in $variants {
+        &.#{$name} {
+            background: list.nth($tokens, 1);
+            color: list.nth($tokens, 2);
+
+            .subtitle {
+                color: list.nth($tokens, 3);
+            }
+        }
+    }
+}
+
+.title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    opacity: 0.9;
+    padding-right: 2.5rem;
+}
+
+.value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.1;
+    margin-top: 2px;
+}
+
+.subtitle {
+    font-size: 0.65rem;
+    font-weight: 500;
+    opacity: 0.85;
+}
+
+.icon {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.16);
+    backdrop-filter: blur(2px);
+}

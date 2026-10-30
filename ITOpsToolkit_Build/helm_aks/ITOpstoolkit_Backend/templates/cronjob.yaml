@@ -1,0 +1,69 @@
+{{- if .Values.cronJob }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "itops-backend.fullname" . }}-cronjob
+  labels:
+    {{- include "itops-backend.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cronJob.schedule | quote }}
+  timeZone: {{ .Values.cronJob.timeZone | quote }}
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 5
+  successfulJobsHistoryLimit: 10
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            {{- include "itops-backend.selectorLabels" . | nindent 12 }}
+        spec:
+          restartPolicy: OnFailure
+          {{- if .Values.jfrogSecret }}
+          imagePullSecrets:
+            - name: {{ .Values.jfrogSecret.name }}
+          {{- end }}
+          {{- if .Values.serviceAccount.name }}
+          serviceAccountName: {{ .Values.serviceAccount.name }}
+          {{- end }}
+          containers:
+            - name: weekly-scripts
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  echo "=== Starting weekly scripts ==="
+                  {{- range .Values.cronJob.scripts }}
+                  echo "Running {{ . }}..."
+                  python {{ . }} || echo "WARNING: {{ . }} failed"
+                  {{- end }}
+                  echo "=== Weekly scripts completed ==="
+              envFrom:
+                - configMapRef:
+                    name: {{ include "itops-backend.fullname" . }}-config
+              env:
+                {{- toYaml .Values.env | nindent 16 }}
+              {{- if .Values.configMaps }}
+              volumeMounts:
+                {{- range .Values.configMaps }}
+                - name: {{ .name }}
+                  mountPath: {{ .destinationPath }}
+                  subPath: {{ .fileName }}
+                {{- end }}
+              {{- end }}
+          {{- if .Values.configMaps }}
+          volumes:
+            {{- range .Values.configMaps }}
+            - name: {{ .name }}
+              configMap:
+                name: {{ .name }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml .Values.nodeSelector | nindent 12 }}
+          {{- end }}
+{{- end }}

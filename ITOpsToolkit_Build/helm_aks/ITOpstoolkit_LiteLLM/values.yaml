@@ -1,0 +1,88 @@
+replicaCount: 1
+
+###########For File Mounting ###############
+configMaps:
+  - name: litellm-config
+    destinationPath: /app/config.yaml
+    fileName: litellm-config.yaml
+      # Additional files can be mounted by adding entries in the format above
+################################################
+
+
+image:
+  repository: <ACR ARN>/<Repo Name>
+  pullPolicy: Always
+  tag: "<Tag Name>"
+#############For AGIC use###############
+ingress:
+  className: "azure-application-gateway"
+  annotations:
+    appgw.ingress.kubernetes.io/backend-protocol: "http"
+    appgw.ingress.kubernetes.io/health-probe-status-codes: "200-399"
+    appgw.ingress.kubernetes.io/health-probe-port: "<port>" #4000
+    appgw.ingress.kubernetes.io/ssl-redirect: "true"
+    appgw.ingress.kubernetes.io/health-probe-path: "/litellm"
+    #appgw.ingress.kubernetes.io/cookie-based-affinity: "true"
+########################################    
+
+######For Nginx Ingress Controller######## Uncomment when needed
+#ingress:
+#className: "nginx"
+#annotations: {}
+##########################################
+# ###############################################
+
+service:
+  type: ClusterIP
+  port: <Port> #4000
+  targetPort: <Port> #4000
+  
+nameOverride: "itops-litellm"
+fullnameOverride: "itops-platform-itops-litellm"
+
+nodeSelector:
+  <label-key>: <label-value>
+
+host:
+  name: "<DNS Name>" #without https
+
+resources:
+  limits:
+    cpu: 1500m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+    
+# Below secret is for SSL certtificates. Remove this if its not needed 
+secret:
+  name: "<K8s secret name>"
+
+# Uncomment this only if the image is getting pulled from JFrog directly via helms 
+# jfrogSecret:
+#   name: <secret-name>
+
+
+#Probes can be disabled by setting 'false' for the below fields
+probes:
+  liveness:
+    enabled: true
+    path: /health/liveliness
+  readiness:
+    enabled: true
+    path: /health/readiness
+
+
+env:
+  - name: LITELLM_MASTER_KEY
+    value: "<Master Password>"
+  - name: UI_USERNAME
+    value: "<Username>"
+  - name: UI_PASSWORD
+    value: "<Password>"
+  - name: LITELLM_PUBLIC_BASE_URL
+    value: "<DNS>/litellm"
+  - name: DATABASE_URL
+    value: "postgresql://<LiteLLM-DB-Username>:<LiteLLM-DB-Password>@<LiteLLM-DB Host>:<LiteLLM-DB-Port>/<LiteLLM-DB-Name>"
+  - name: SERVER_ROOT_PATH
+    value: "/litellm"

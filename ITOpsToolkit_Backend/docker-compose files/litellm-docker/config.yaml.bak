@@ -1,0 +1,10 @@
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: os.environ/AZURE_MODEL
+      api_base: os.environ/AZURE_API_BASE
+      api_key: os.environ/AZURE_API_KEY
+      api_version: os.environ/AZURE_API_VERSION
+
+general_settings:
+  database_url: "postgresql://llm_proxy:approxy1ite@172.31.41.104:5432/litellm"

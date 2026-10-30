@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ATK Login — Preview</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    :root {
+      --navy:       #0d1b3e;
+      --blue:       #1a56d6;
+      --teal:       #29c6c6;
+      --white:      #ffffff;
+      --muted:      rgba(255,255,255,0.58);
+      --border:     #c8d3ea;
+      --input-bg:   #f8faff;
+      --radius:     8px;
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+    }
+
+    /* ─── Layout ──────────────────────────────────────────── */
+    .page {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ─── Left panel ──────────────────────────────────────── */
+    .left {
+      width: 42%;
+      min-height: 100vh;
+      background: linear-gradient(160deg, #091428 0%, #0d1b3e 55%, #122050 100%);
+      display: flex;
+      flex-direction: column;
+      padding: 2.2rem 2.8rem;
+      color: var(--white);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* subtle dot-grid overlay */
+    .left::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(circle, rgba(255,255,255,0.11) 1px, transparent 1px);
+      background-size: 28px 28px;
+      pointer-events: none;
+    }
+
+    .left-top    { position: relative; z-index: 1; margin-bottom: 0; }
+    .left-body   { flex: 1; display: flex; flex-direction: column; justify-content: center; position: relative; z-index: 1; }
+    .left-footer { position: relative; z-index: 1; margin-top: 2rem; }
+
+    .logo { display: flex; align-items: center; }
+
+    .tagline {
+      font-size: 0.67rem;
+      font-weight: 700;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin: 0 0 0.8rem;
+    }
+
+    .brand-title {
+      font-size: 2.1rem;
+      font-weight: 800;
+      line-height: 1.2;
+      color: var(--white);
+      margin: 0 0 0.85rem;
+    }
+
+    .brand-title span { color: var(--teal); }
+
+    .bullets {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: rgba(255,255,255,0.80);
+      margin: 0 0 1rem;
+      letter-spacing: 0.02em;
+    }
+
+    .desc {
+      font-size: 0.82rem;
+      line-height: 1.75;
+      color: var(--muted);
+      max-width: 360px;
+    }
+
+    .left-footer p {
+      font-size: 0.72rem;
+      color: rgba(255,255,255,0.32);
+      margin: 0;
+    }
+
+    /* ─── Right panel ─────────────────────────────────────── */
+    .right {
+      width: 58%;
+      min-height: 100vh;
+      background: var(--white);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+
+    .form-box {
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .accent-bar {
+      width: 44px;
+      height: 4px;
+      background: var(--blue);
+      border-radius: 2px;
+      margin-bottom: 1.4rem;
+    }
+
+    .welcome {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #111827;
+      margin: 0 0 1.8rem;
+    }
+
+    /* ─── Form fields ─────────────────────────────────────── */
+    .field { margin-bottom: 1.1rem; }
+
+    .field label {
+      display: block;
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 0.38rem;
+    }
+
+    /* text input wrapper */
+    .input-wrap {
+      display: flex;
+      align-items: center;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--input-bg);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .input-wrap:focus-within {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(26,86,214,0.11);
+    }
+
+    .input-wrap input {
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      padding: 0.68rem 0.8rem;
+      font-size: 0.88rem;
+      color: #1f2937;
+      font-family: inherit;
+    }
+
+    .input-wrap input::placeholder { color: #9ca3af; }
+
+    .icon {
+      padding: 0 0.72rem;
+      color: #9ca3af;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    /* password row */
+    .pw-wrap {
+      display: flex;
+      align-items: stretch;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--input-bg);
+      overflow: hidden;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .pw-wrap:focus-within {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(26,86,214,0.11);
+    }
+
+    .pw-wrap input {
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      padding: 0.68rem 0.8rem;
+      font-size: 0.88rem;
+      color: #1f2937;
+      font-family: inherit;
+    }
+
+    .pw-wrap input::placeholder { color: #9ca3af; }
+
+    .eye-btn {
+      background: transparent;
+      border: none;
+      border-left: 1px solid var(--border);
+      padding: 0 0.8rem;
+      cursor: pointer;
+      color: #6b7280;
+      display: flex;
+      align-items: center;
+    }
+
+    .eye-btn:hover { color: var(--blue); }
+
+    .forgot-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 0.38rem;
+    }
+
+    .forgot-row a {
+      font-size: 0.82rem;
+      color: var(--blue);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .forgot-row a:hover { text-decoration: underline; }
+
+    /* ─── Sign In button ──────────────────────────────────── */
+    .btn-signin {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      width: 100%;
+      margin-top: 1.25rem;
+      padding: 0.82rem 1rem;
+      background: linear-gradient(135deg, #0d1b3e 0%, #1a3a8f 100%);
+      color: var(--white);
+      font-size: 1rem;
+      font-weight: 600;
+      font-family: inherit;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      transition: opacity 0.18s;
+    }
+
+    .btn-signin:hover  { opacity: 0.88; }
+    .btn-signin:active { opacity: 0.78; }
+
+    /* ─── "or" divider ────────────────────────────────────── */
+    .or-divider {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin: 1.1rem 0;
+      color: #9ca3af;
+      font-size: 0.82rem;
+    }
+
+    .or-divider::before,
+    .or-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #e5e7eb;
+    }
+
+    /* ─── SSO button ──────────────────────────────────────── */
+    .btn-sso {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 0.76rem 1rem;
+      background: var(--white);
+      color: var(--navy);
+      font-size: 0.95rem;
+      font-weight: 600;
+      font-family: inherit;
+      border: 1.5px solid var(--navy);
+      border-radius: var(--radius);
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.18s;
+    }
+
+    .btn-sso:hover { background: #f0f4ff; }
+
+    /* ─── Register row ────────────────────────────────────── */
+    .register-row {
+      margin-top: 1.2rem;
+      font-size: 0.85rem;
+      color: #6b7280;
+    }
+
+    .register-row a {
+      color: var(--blue);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .register-row a:hover { text-decoration: underline; }
+
+    /* ─── Responsive ──────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .left  { display: none; }
+      .right { width: 100%; padding: 2rem 1.25rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- ══════════════════════════════════════════════════════
+       LEFT — BRANDING PANEL
+  ══════════════════════════════════════════════════════════ -->
+  <div class="left">
+
+    <div class="left-top">
+      <div class="logo">
+        <img src="login/resources/img/logo.png" alt="ATK Logo" height="44" />
+      </div>
+    </div>
+
+    <div class="left-body">
+      <p class="tagline">Transform your IT operations with</p>
+      <h1 class="brand-title">Autonomous <span>ITOps</span> Toolkit</h1>
+      <p class="bullets">• Automate &nbsp;&nbsp;• Optimize &nbsp;&nbsp;• Scale</p>
+      <p class="desc">Your intelligent AI assistant for unified, intelligent IT operations — resolving faster, running smarter, built for what's next.</p>
+    </div>
+
+    <div class="left-footer">
+      <p>© Cognizant. All rights reserved.</p>
+    </div>
+
+  </div><!-- /.left -->
+
+
+  <!-- ══════════════════════════════════════════════════════
+       RIGHT — FORM PANEL
+  ══════════════════════════════════════════════════════════ -->
+  <div class="right">
+    <div class="form-box">
+
+      <div class="accent-bar"></div>
+      <h2 class="welcome">Welcome!</h2>
+
+      <form action="#" method="post" novalidate>
+
+        <!-- Username -->
+        <div class="field">
+          <label for="username">Username</label>
+          <div class="input-wrap">
+            <span class="icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+            </span>
+            <input type="text" id="username" name="username"
+                   placeholder="Enter your username or employee id"
+                   autocomplete="username" />
+          </div>
+        </div>
+
+        <!-- Password -->
+        <div class="field">
+          <label for="password">Password</label>
+          <div class="pw-wrap" id="pw-wrap">
+            <span class="icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </span>
+            <input type="password" id="password" name="password"
+                   placeholder="Enter your password"
+                   autocomplete="current-password" />
+            <button type="button" class="eye-btn" id="eye-btn" aria-label="Show password">
+              <!-- eye-off icon (shown while password is hidden) -->
+              <svg id="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+          <div class="forgot-row">
+            <a href="#">Forgot Password?</a>
+          </div>
+        </div>
+
+        <!-- Sign In -->
+        <button type="submit" class="btn-signin">
+          Sign In
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+            <polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </button>
+
+      </form>
+
+      <!-- or divider -->
+      <div class="or-divider">or</div>
+
+      <!-- Login With SSO -->
+      <a href="#" class="btn-sso">Login With SSO</a>
+
+      <!-- New user -->
+      <div class="register-row">
+        New user? <a href="#">Register</a>
+      </div>
+
+    </div><!-- /.form-box -->
+  </div><!-- /.right -->
+
+</div><!-- /.page -->
+
+<script>
+  // Password show/hide toggle
+  const btn  = document.getElementById('eye-btn');
+  const inp  = document.getElementById('password');
+  const icon = document.getElementById('eye-icon');
+
+  const eyeOn  = `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`;
+  const eyeOff = `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>`;
+
+  btn.addEventListener('click', () => {
+    const show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    icon.innerHTML = show ? eyeOff : eyeOn;
+    btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  });
+</script>
+
+</body>
+</html>

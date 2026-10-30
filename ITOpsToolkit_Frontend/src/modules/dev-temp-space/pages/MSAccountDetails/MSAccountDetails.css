@@ -1,0 +1,127 @@
+.account-details-container {
+    padding: 20px;
+    max-width: 600px;
+    margin: 20px auto;
+}
+
+.account-card {
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 24px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.account-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    border-bottom: 2px solid #0078d4;
+    padding-bottom: 16px;
+}
+
+.account-header h2 {
+    margin: 0;
+    color: #0078d4;
+    font-size: 24px;
+}
+
+.sign-out-btn {
+    background-color: #d32f2f;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background-color 0.3s;
+}
+
+.sign-out-btn:hover {
+    background-color: #b71c1c;
+}
+
+.account-info {
+    margin-bottom: 24px;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.info-row label {
+    font-weight: 600;
+    color: #333;
+    min-width: 150px;
+}
+
+.info-value {
+    color: #666;
+    word-break: break-all;
+    text-align: right;
+    flex: 1;
+    margin-left: 16px;
+}
+
+.info-code {
+    font-family: 'Courier New', monospace;
+    background-color: #f5f5f5;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.accounts-section {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 2px solid #f0f0f0;
+}
+
+.accounts-section h3 {
+    color: #0078d4;
+    margin-bottom: 12px;
+}
+
+.accounts-list {
+    list-style: none;
+    padding: 0;
+}
+
+.accounts-list li {
+    padding: 8px;
+    background-color: #f9f9f9;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    border-left: 3px solid #0078d4;
+    padding-left: 12px;
+}
+
+.debug-section {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 2px solid #f0f0f0;
+}
+
+.debug-section h3 {
+    color: #ff9800;
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+
+.debug-code {
+    background-color: #f5f5f5;
+    padding: 12px;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.4;
+    border: 1px solid #e0e0e0;
+    max-height: 300px;
+    overflow-y: auto;
+}

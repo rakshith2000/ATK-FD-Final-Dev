@@ -1,0 +1,7 @@
+ITSM_TAG=<ITSM Tag>
+ITSM_TYPE=servicenow
+ITSM_AUTH_TYPE=service_account
+ITSM_URL=<ServiceNow Instance URL>
+ITSM_USER=<ServiceNow API Username>
+ITSM_PASSWORD=<ServiceNow API Password>
+BEARER_TOKEN=

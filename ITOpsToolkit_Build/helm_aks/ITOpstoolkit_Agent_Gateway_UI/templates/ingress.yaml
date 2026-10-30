@@ -1,0 +1,166 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "itops-agent-gateway-ui.fullname" . }}-ingress
+  labels:
+    externaldns-enabled: "true"
+    {{- include "itops-agent-gateway-ui.labels" . | nindent 4 }}
+  {{- if .Values.ingress.api.annotations }}
+  annotations:
+    {{- toYaml .Values.ingress.api.annotations | nindent 4 }}
+  {{- end }}
+
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.secret }}
+  tls:
+    - hosts:
+        - {{ .Values.host.name }}
+      secretName: {{ .Values.secret.name }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.host.name }}
+      http:
+        paths:
+
+          # UI
+          - path: /ui
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "itops-agent-gateway-ui.fullname" . }}
+                port:
+                  number: {{ .Values.ingress.uiPort }}
+
+          - path: /config.json
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "itops-agent-gateway-ui.fullname" . }}
+                port:
+                  number: {{ .Values.ingress.uiPort }}
+
+          - path: /fastai-app-config.json
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "itops-agent-gateway-ui.fullname" . }}
+                port:
+                  number: {{ .Values.ingress.uiPort }}
+
+          # Gateway Admin Endpoints
+          - path: /config_dump
+            pathType: Prefix
+            backend:
+              service:
+                name: itops-platform-itops-agent-gateway-engine
+                port:
+                  number: 15000
+
+          - path: /config
+            pathType: Prefix
+            backend:
+              service:
+                name: itops-platform-itops-agent-gateway-engine
+                port:
+                  number: 15000
+
+          - path: /logging
+            pathType: Prefix
+            backend:
+              service:
+                name: itops-platform-itops-agent-gateway-engine
+                port:
+                  number: 15000
+
+          - path: /memory
+            pathType: Prefix
+            backend:
+              service:
+                name: itops-platform-itops-agent-gateway-engine
+                port:
+                  number: 15000
+
+          - path: /cel
+            pathType: Prefix
+            backend:
+              service:
+                name: itops-platform-itops-agent-gateway-engine
+                port:
+                  number: 15000
+
+          - path: /debug
+            pathType: Prefix
+            backend:
+              service:
+                name: itops-platform-itops-agent-gateway-engine
+                port:
+                  number: 15000
+
+          - path: /api/runtime
+            pathType: Prefix
+            backend:
+              service:
+                name: itops-platform-itops-agent-gateway-engine
+                port:
+                  number: 15000
+
+          - path: /api/config
+            pathType: Prefix
+            backend:
+              service:
+                name: itops-platform-itops-agent-gateway-engine
+                port:
+                  number: 15000
+
+          - path: /api/cel
+            pathType: Prefix
+            backend:
+              service:
+                name: itops-platform-itops-agent-gateway-engine
+                port:
+                  number: 15000
+
+          - path: /api/logs
+            pathType: Prefix
+            backend:
+              service:
+                name: itops-platform-itops-agent-gateway-engine
+                port:
+                  number: 15000
+
+          - path: /api/costs
+            pathType: Prefix
+            backend:
+              service:
+                name: itops-platform-itops-agent-gateway-engine
+                port:
+                  number: 15000
+
+          # OpenAI Compatible API used by Playground
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: itops-platform-itops-agent-gateway-engine
+                port:
+                  number: 4000
+
+         
+          # MCP API
+          - path: /mcp
+            pathType: Prefix
+            backend:
+              service:
+                name: itops-platform-itops-agent-gateway-engine
+                port:
+                  number: 443
+
+          # Optional SSE endpoint
+          - path: /sse
+            pathType: Prefix
+            backend:
+              service:
+                name: itops-platform-itops-agent-gateway-engine
+                port:
+                  number: 443

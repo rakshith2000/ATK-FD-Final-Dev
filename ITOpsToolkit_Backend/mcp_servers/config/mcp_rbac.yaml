@@ -1,0 +1,9 @@
+groups:
+  basic:
+    - servicenow_mcp|get_cmdb_ci
+  privileged:
+    - servicenow_mcp|get_service_map
+ 
+group_hierarchy:
+  - ["basic", "privileged", "admin"]
+  - ["support", "deployment", "development"]

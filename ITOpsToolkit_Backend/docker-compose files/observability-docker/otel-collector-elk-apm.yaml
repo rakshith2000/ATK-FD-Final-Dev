@@ -1,0 +1,57 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+      http:
+        endpoint: 0.0.0.0:4318
+        tls:
+          cert_file: /opt/certs/fullchain.pem
+          key_file:  /opt/certs/privkey.pem
+        cors:
+          allowed_origins: ["https://demoadk.autonomousitopstoolkit.com:3000"]
+          allowed_headers: ["*"]
+          max_age: 86400
+
+
+processors:
+  batch:
+    send_batch_size: 1000
+    timeout: 5s
+  resource:
+    attributes:
+      - key: service.name
+        value: "itops-toolkit"
+        action: upsert
+
+      - key: service.version
+        value: "1.0"
+        action: upsert
+
+      - key: deployment.environment
+        value: "production"
+        action: upsert
+
+exporters:
+  otlp/elastic:
+    endpoint: "https://15.168.48.67:8400"
+    tls:
+      insecure_skip_verify: true
+    headers:
+      Authorization: "Bearer secrettokengoeshere"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [otlp/elastic]
+    metrics:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [otlp/elastic]
+    logs:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [otlp/elastic]

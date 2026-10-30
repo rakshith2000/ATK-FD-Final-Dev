@@ -1,0 +1,166 @@
+# Before running this Kubernetes Job, ensure that Vault, DB, Volume mounts, Secrets are created and reachable.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backend-db-vault-setup-and-kb-sync
+  namespace: <>
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 0
+  template:
+    spec:
+      # Uncomment this only if the image is getting pulled from JFrog directly via helm
+      #imagePullSecrets:
+      #  - name: jfrog-registry-secret
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+        - name: setup
+          image: "<ACR ARN>/<Repo Name>:<Tag>"
+          workingDir: /app
+          command:
+            - python
+            - -c
+            - |
+              import subprocess, sys
+
+              steps = [
+                  ("deployment_setup.py", ["python", "deployment_setup.py"]),
+                  ("kb_sync.py", ["python", "modules/knowledge_assist/utils/kb_sync.py", "initial"]),
+              ]
+
+              for name, cmd in steps:
+                  print(f"Running {name}...", flush=True)
+                  result = subprocess.run(cmd, cwd="/app")
+                  if result.returncode != 0:
+                      print(f"{name} - FAILED (exit code {result.returncode})", flush=True)
+                      sys.exit(1)
+                  print(f"{name} - SUCCESS", flush=True)
+          envFrom:
+            - configMapRef:
+                name: itops-platform-itops-backend-config # Update this Backend ConfigMap name if it's changed.
+          env:
+            - name: PORT
+              value: "8000"
+            - name: ENVIRONMENT
+              value: "production"
+            - name: CORS_ORIGINS
+              value: "*"
+          volumeMounts:
+            - name: keycloak-secret-vol
+              mountPath: /app/config/.keycloak_env
+              subPath: .keycloak_env
+              readOnly: true
+            - name: itsm-secret-vol
+              mountPath: /app/config/.itsm_env
+              subPath: .itsm_env
+              readOnly: true
+            - name: vault-env
+              mountPath: /app/config/.vault_env
+              subPath: vault_env
+              readOnly: true
+            - name: vault-type
+              mountPath: /app/config/.vault_type
+              subPath: vault_type
+              readOnly: true
+      restartPolicy: Never
+      # Remove the below nodeSelector block if it's not needed
+      nodeSelector:
+        <label-key>: <label-value>
+      volumes:
+        - name: keycloak-secret-vol
+          secret:
+            secretName: keycloak-secret
+        - name: itsm-secret-vol
+          secret:
+            secretName: itsm-secret
+        - name: vault-env
+          configMap:
+            name: vault-env
+        - name: vault-type
+          configMap:
+            name: vault-type
+
+# ========== Uncomment the below and run if the Backend Image with SHELL ===================
+
+# apiVersion: batch/v1
+# kind: Job
+# metadata:
+#   name: backend-db-vault-setup-and-kb-sync
+#   namespace: <>
+# spec:
+#   ttlSecondsAfterFinished: 600
+#   backoffLimit: 0
+#   template:
+#     spec:
+#       # Uncomment this only if the image is getting pulled from JFrog directly via helms 
+#       #imagePullSecrets:
+#       #  - name: jfrog-registry-secret
+#       containers:
+#         - name: setup
+#           image: "<ACR ARN>/<Repo Name>:<Tag>"
+#           command: ['sh', '-c']
+#           args:
+#             - |
+#               echo "Running deployment_setup.py..."
+#               cd /app && python deployment_setup.py
+#               if [ $? -eq 0 ]; then
+#                 echo "deployment_setup.py - SUCCESS"
+#               else
+#                 echo "deployment_setup.py - FAILED"
+#                 exit 1
+#               fi
+#               echo "Running kb_sync.py..."
+#               cd /app && python modules/knowledge_assist/utils/kb_sync.py initial
+#               if [ $? -eq 0 ]; then
+#                 echo "kb_sync.py - SUCCESS"
+#               else
+#                 echo "kb_sync.py - FAILED"
+#                 exit 1
+#               fi
+#           envFrom:
+#             - configMapRef:
+#                 name: itops-platform-itops-backend-config #Update this Backend ConfigMap name if its changed. 
+#           env:
+#             - name: PORT
+#               value: "8000"
+#             - name: ENVIRONMENT
+#               value: "production"
+#             - name: CORS_ORIGINS
+#               value: "*"
+#           volumeMounts:
+#             - name: keycloak-secret-vol
+#               mountPath: /app/config/.keycloak_env
+#               subPath: .keycloak_env
+#               readOnly: true
+#             - name: itsm-secret-vol
+#               mountPath: /app/config/.itsm_env
+#               subPath: .itsm_env
+#               readOnly: true
+#             - name: vault-env
+#               mountPath: /app/config/.vault_env
+#               subPath: vault_env
+#               readOnly: true
+#             - name: vault-type
+#               mountPath: /app/config/.vault_type
+#               subPath: vault_type
+#               readOnly: true
+#       restartPolicy: Never
+#       #Remove the below nodeSelector block if its not needed
+#       nodeSelector:
+#         <label-key>: <label-value>
+#       volumes:
+#         - name: keycloak-secret-vol
+#           secret:
+#             secretName: keycloak-secret
+#         - name: itsm-secret-vol
+#           secret:
+#             secretName: itsm-secret
+#         - name: vault-env
+#           configMap:
+#             name: vault-env
+#         - name: vault-type
+#           configMap:
+#             name: vault-type

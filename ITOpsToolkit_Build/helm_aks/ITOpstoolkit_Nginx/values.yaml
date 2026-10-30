@@ -1,0 +1,36 @@
+replicaCount: 1
+
+image:
+  repository: <ACR image repo uri>
+  tag: "<Image tag>"
+  pullPolicy: Always
+
+service:
+  type: LoadBalancer
+  port: <> #443
+  targetPort: <> #443
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+
+nameOverride: "itops-nginx"
+fullnameOverride: "itops-platform-itops-nginx"
+
+
+nodeSelector:
+  <node label name>: "<node label value>"
+ 
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+ 
+# Below secret is for SSL certtificates. Remove this if its not needed 
+secret:
+  name: "<K8s secret name>"
+
+# Uncomment this only if the image is getting pulled from JFrog directly via helms 
+# jfrogSecret:
+#   name: <secret-name>

@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "itops-agent-gateway-engine.fullname" . }}
+  labels:
+    {{- include "itops-agent-gateway-engine.labels" . | nindent 4 }}
+
+spec:
+  replicas: {{ .Values.replicaCount }}
+
+  selector:
+    matchLabels:
+      {{- include "itops-agent-gateway-engine.selectorLabels" . | nindent 6 }}
+
+  template:
+    metadata:
+      labels:
+        {{- include "itops-agent-gateway-engine.selectorLabels" . | nindent 8 }}
+
+    spec:
+      {{- if .Values.jfrogSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.jfrogSecret.name }}
+      {{- end }}
+
+      initContainers:
+        - name: seed-config
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              if [ ! -f /shared/config.yaml ]; then
+                echo "Seeding config.yaml to PVC..."
+                cp /config-seed/config.yaml /shared/config.yaml
+              fi
+              chmod 666 /shared/config.yaml
+
+          volumeMounts:
+            - name: gateway-config
+              mountPath: /config-seed
+
+            - name: gateway-data
+              mountPath: /shared
+
+      containers:
+        - name: {{ include "itops-agent-gateway-engine.name" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          args:
+            - "-f"
+            - "/shared/config.yaml"
+
+          ports:
+            {{- range .Values.service.ports }}
+            - name: {{ .name }}
+              containerPort: {{ .targetPort }}
+            {{- end }}
+
+          env:
+            {{- toYaml .Values.env | nindent 12 }}
+
+          volumeMounts:
+            - name: gateway-config
+              mountPath: /config
+
+            - name: gateway-data
+              mountPath: /shared
+
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.probes.liveness.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          {{- end }}
+
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.probes.readiness.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          {{- end }}
+
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+      volumes:
+        - name: gateway-config
+          configMap:
+            name: {{ include "itops-agent-gateway-engine.fullname" . }}-config
+
+        - name: gateway-data
+          persistentVolumeClaim:
+            claimName: {{ include "itops-agent-gateway-engine.fullname" . }}-pvc
+
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,5 @@
+KEYCLOAK_URL=http://keycloak:8080/auth
+KEYCLOAK_REDIRECTION_URL=https://<DNS Name>
+REALM_NAME=<Keycloak Realm Name>
+CLIENT_ID=<Backend Keycloak Client ID>
+CLIENT_SECRET=<Backend Keycloak Client Secret>

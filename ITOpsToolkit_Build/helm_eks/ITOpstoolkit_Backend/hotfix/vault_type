@@ -1,0 +1,5 @@
+Remove all the lines which are not needed(including this line). Only required key,value should be there.
+
+VAULT_TYPE=Hashicorp
+VAULT_TYPE=AWS
+VAULT_TYPE=Azure

@@ -1,0 +1,237 @@
+replicaCount: 1
+
+
+###########The Below Section is For Volume mounts ###############
+configMaps:
+  - name: vault-env
+    destinationPath: /app/config/.vault_env
+    fileName: vault_env
+  - name: vault-type
+    destinationPath: /app/config/.vault_type
+    fileName: vault_type
+  # Additional files can be mounted by adding entries in the format above
+  
+#######For Nginx Ingress Controller##########
+# ingress:
+#  className: "nginx"
+##############################################
+
+# ############AWS Load Balancer Ingress########## #uncomment as per requirement
+ingress:
+  className: "alb"
+  api:
+    annotations:
+      alb.ingress.kubernetes.io/group.name: atk-group #This group name can be any name. Try to use the same name for all ATK components to avoid multiple LB creations
+      alb.ingress.kubernetes.io/scheme: internet-facing     #<internet-facing> for internet facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/healthcheck-path: /api/docs
+      alb.ingress.kubernetes.io/success-codes: "200-399"
+      alb.ingress.kubernetes.io/healthcheck-port: '8000' #backend port
+      alb.ingress.kubernetes.io/group.order: "1"
+      alb.ingress.kubernetes.io/ssl-redirect: '443'
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+      #alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=300 # Uncomment to avoid 504 (gateway timeout) errors on long-running requests
+      #alb.ingress.kubernetes.io/certificate-arn: <ACM ARN>  #Uncomment this line and remove 'secret' block only if ACM is being used for DNS certificates
+  mimchat:
+    annotations:
+      alb.ingress.kubernetes.io/group.name: atk-group #This group name can be any name. Try to use the same name for all ATK components to avoid multiple LB creations
+      alb.ingress.kubernetes.io/scheme: internet-facing     #<internet-facing> for internet facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/healthcheck-path: /mim-chat
+      alb.ingress.kubernetes.io/success-codes: "200-399"
+      alb.ingress.kubernetes.io/healthcheck-port: '3978' #mim port
+      alb.ingress.kubernetes.io/group.order: "1"
+      alb.ingress.kubernetes.io/ssl-redirect: '443'
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+      #alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=300 # Uncomment to avoid 504 (gateway timeout) errors on long-running requests
+      #alb.ingress.kubernetes.io/certificate-arn: <ACM ARN>  #Uncomment this line and remove 'secret' block only if ACM is being used for DNS certificates
+
+
+    # ###############################################
+image:
+  repository: <ECR ARN>/<repo name>
+  pullPolicy: Always
+  tag: "<Tag>"
+  
+nameOverride: "itops-backend"
+fullnameOverride: "itops-platform-itops-backend"
+
+serviceAccount:
+  name: <service-acoount-name>
+  annotations:
+    eks.amazonaws.com/role-arn: <service-account-ARN>
+
+service:
+  type: ClusterIP
+  port: <Backend Port> #8000
+  targetPort: <Backend Port> #8000
+  mcpPort: <Default ServiceNow MCP Port> #6000  (Remove if not needed)
+  mimPort: <Backend Port> #3978 (Remove if not needed)
+
+host:
+  name: "< DNS name >" #without https
+
+# Below secret is for SSL certtificates. Remove this if its not needed 
+secret:
+  name: "<K8s secret name>"
+
+# Uncomment this only if the image is getting pulled from JFrog directly via helms 
+# jfrogSecret:
+#   name: <secret-name>
+
+# Uncomment and update the values below to enable a cron job with a custom schedule
+#cronJob:
+#  schedule: <> #example "0 0 * * 0"
+#  timeZone: <> #example "Asia/Kolkata" OR UTC OR America/New_York
+#  scripts:
+#    - <>
+#    - <> # example: /app/kb_sync.py incremental
+#    - <> # example: /app/modules/problem_assist/utils/proactive_problem_analysis.py
+
+config:
+  PGDB_HOST: "<Backend DB URL>"
+  PGDB_NAME: "<DB Name>"
+  PGDB_PORT: 5432
+  PROACTIVE_PROBLEM_ANALYSIS_DAYS: <Number of days of historical data to include when performing proactive problem analysis>
+  APP_TYPE: "<>" #SingleTenant 
+  SA_CLIENT_ID: "<>" # MIM Keycloak Client
+  MIM_APP_PORT: 3978
+  AGENT_GATEWAY_URL: "<Agent Gateway URL>" #http://itops-platform-agent-gateway.integration.svc.cluster.local:3000/agent-gateway
+  TWILIO_PHONE_NUMBER_FROM: "<>"
+
+keycloak_secrets:
+  KEYCLOAK_URL: "<Keycloak URL>" #with https  -> Example https://<DNS>/auth/
+  KEYCLOAK_REDIRECTION_URL: "<DNS Name>" #with https  -> Example https://<DNS>
+  REALM_NAME: "<Realm name>"
+  CLIENT_ID: "<Backend Client ID>"
+  CLIENT_SECRET: "<Backend Client Secret>"
+  SA_CLIENT_ID: "<MIM Client ID>"
+  SA_CLIENT_SECRET: "<MIM Client Secret>"
+  
+
+itsm_secrets:
+  ITSM_TAG: "lab_instance" # Keep this value as is till kb sync. This can be changed in admin console later, if required.
+  ITSM_TYPE: "<>" #servicenow (For ServiceNow)
+  ITSM_AUTH_TYPE: "<>"  #service_account (For ServiceNow)
+  ITSM_URL: "<serviceNow URL>"
+  ITSM_USER: "<serviceNow service account Username>"
+  ITSM_PASSWORD: "<serviceNow service account Password>"
+  BEARER_TOKEN: ""
+
+keycloakSecret:
+  enabled: true
+  mountPath: /app/config
+  fileName: .keycloak_env
+
+itsmSecret:
+  enabled: true
+  mountPath: /app/config
+  fileName: .itsm_env
+
+pvc:
+  enabled: true
+  storageClassName: ebs-gp3
+  size: 5Gi
+  sharedFiles:
+    - pvcName: change_assist_system_prompts.yaml
+      fileName: system_prompts.yaml
+      mountPath: /app/modules/change_assist/config
+
+    - pvcName: incident_assist_system_prompts.yaml
+      fileName: system_prompts.yaml
+      mountPath: /app/modules/incident_assist/config
+
+    - pvcName: knowledge_assist_system_prompts.yaml
+      fileName: system_prompts.yaml
+      mountPath: /app/modules/knowledge_assist/config
+
+    - pvcName: meeting_assist_system_prompts.yaml
+      fileName: system_prompts.yaml
+      mountPath: /app/modules/meeting_assist/config
+
+    - pvcName: problem_assist_system_prompts.yaml
+      fileName: system_prompts.yaml
+      mountPath: /app/modules/problem_assist/config
+
+    - pvcName: train_assist_system_prompts.yaml
+      fileName: system_prompts.yaml
+      mountPath: /app/modules/train_assist/config
+    
+    - pvcName: mim_assist_system_prompts.yaml
+      fileName: system_prompts.yaml
+      mountPath: /app/modules/mim_assist/config
+
+    - pvcName: mim_assist_shift_roaster.xlsx
+      fileName: shift_roaster.xlsx
+      mountPath: /app/modules/mim_assist/config
+
+
+# Uncomment this only if the image is getting pulled from JFrog directly via helms 
+# jfrogSecret:
+#   - name: <secret-name>
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 8Gi
+  requests:
+    cpu: 1000m
+    memory: 4Gi
+    
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+
+nodeSelector:
+  <label-key>: <label-value>
+
+tolerations:
+  - key: "node.kubernetes.io/disk-pressure"
+    operator: "Exists"
+    effect: "NoSchedule"
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values:
+          - itops-frontend
+      topologyKey: kubernetes.io/hostname
+
+#Probes can be disabled by setting 'false' for the below fields
+probes:
+  startup:
+    enabled: true
+    path: /health/live
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 60
+  liveness:
+    enabled: true
+    path: /health/live
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 5
+  readiness:
+    enabled: true
+    path: /health/ready
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    
+
+env:
+  - name: PORT
+    value: "<Backend>" #8000
+  - name: ENVIRONMENT
+    value: "production"
+  - name: CORS_ORIGINS
+    value: "*"

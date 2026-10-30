@@ -1,0 +1,2 @@
+general_settings:
+  database_url: "postgresql://<LiteLLM DB Username>:<LiteLLM DB Password>@postgres:5432/<LiteLLM DB Name>"

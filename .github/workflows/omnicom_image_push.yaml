@@ -1,0 +1,141 @@
+name: JFrog_Parameterised_MAF
+
+# on:
+#   push:
+#     branches:
+#       - integration
+
+on:
+   workflow_dispatch:
+
+env:
+  JFROG_REGISTRY: ${{ github.event.inputs.jfrog_registry || 'atkcontainerhub.jfrog.io' }}
+  JFROG_REPO: ${{ github.event.inputs.jfrog_repo || 'omnicom-atk' }}
+  JFROG_FOLDER: ${{ github.event.inputs.jfrog_folder || 'omnicom_atk_maf' }}
+
+  # Final: atkcontainerhub.jfrog.io/omnicom-atk/omnicom_atk_maf:omnicom_atk_keycloak_dev_2.0.0.001
+
+  KEYCLOAK_TAG: ${{ github.event.inputs.keycloak_tag || 'keycloak_2.2.3' }}
+  KEYCLOAK_PATH: './ITOpsToolkit_Keycloak'
+  #BUILD_KEYCLOAK: ${{ github.event.inputs.build_keycloak || 'true' }}
+
+  BACKEND_TAG: ${{ github.event.inputs.backend_tag || 'backend_2.2.3' }}
+  BACKEND_PATH: './ITOpsToolkit_Backend'
+  #BUILD_BACKEND: ${{ github.event.inputs.build_backend || 'true' }}
+
+  FRONTEND_TAG: ${{ github.event.inputs.frontend_tag || 'frontend_2.2.4' }}
+  FRONTEND_PATH: './ITOpsToolkit_Frontend'
+  BUILD_FRONTEND: ${{ github.event.inputs.build_frontend || 'true' }}
+
+  NGINX_TAG: ${{ github.event.inputs.nginx_tag || 'nginx_2.2.3' }}
+  NGINX_PATH: './ITOpsToolkit_Nginx'
+  #BUILD_NGINX: ${{ github.event.inputs.build_nginx || 'true' }}
+
+  LITE_LLM_TAG: ${{ github.event.inputs.lite_llm_tag || 'lite_llm_2.2.3' }}
+  LITE_LLM_PATH: './ITOpsToolkit_LiteLLM'
+  #BUILD_LITE_LLM: ${{ github.event.inputs.build_lite_llm || 'true' }}
+
+  GRAFANA_TAG: ${{ github.event.inputs.grafana_tag || 'grafana_2.2.3' }}
+  GRAFANA_PATH: './ITOpsToolkit_Grafana'
+  # BUILD_GRAFANA: ${{ github.event.inputs.build_grafana || 'true' }}
+
+  AGENTGATEWAY_Engine_TAG: ${{ github.event.inputs.agentgateway_engine_tag || 'agentgateway_engine_2.2.3' }}
+  AGENTGATEWAY_Engine_PATH: './ITOpsToolkit_Agent_Gateway/agentgateway-engine'
+  #BUILD_AGENTGATEWAY_Engine: ${{ github.event.inputs.build_agentgateway_engine || 'true' }}
+  
+  AGENTGATEWAY_UI_TAG: ${{ github.event.inputs.agentgateway_ui_tag || 'agentgateway_ui_2.2.3' }}
+  AGENTGATEWAY_UI_PATH: './ITOpsToolkit_Agent_Gateway/agentgateway-ui'
+  #BUILD_AGENTGATEWAY_UI: ${{ github.event.inputs.build_agentgateway_ui || 'true' }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo apt-get clean
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          docker system prune -af --volumes
+          docker builder prune -af
+          df -h
+
+      - name: Login to JFrog
+        run: |
+          echo "${{ secrets.JFROG_PASSWORD }}" | docker login ${{ env.JFROG_REGISTRY }} -u ${{ secrets.JFROG_USER }} --password-stdin
+
+      # Result: atkcontainerhub.jfrog.io/omnicom-atk/omnicom_atk_maf:omnicom_atk_keycloak_dev_2.0.0.001
+      - name: Build and push Keycloak image
+        if: env.BUILD_KEYCLOAK == 'true'
+        run: |
+          IMAGE=${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}/${{ env.JFROG_FOLDER }}:${{ env.KEYCLOAK_TAG }}
+          docker build --no-cache --pull -t $IMAGE ${{ env.KEYCLOAK_PATH }}
+          docker push $IMAGE
+          docker rmi $IMAGE || true
+
+      # Result: atkcontainerhub.jfrog.io/omnicom-atk/omnicom_atk_maf:omnicom_atk_backend_dev_2.0.0.001
+      - name: Build and push Backend image
+        if: env.BUILD_BACKEND == 'true'
+        run: |
+          IMAGE=${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}/${{ env.JFROG_FOLDER }}:${{ env.BACKEND_TAG }}
+          docker build --no-cache --pull -t $IMAGE ${{ env.BACKEND_PATH }}
+          docker push $IMAGE
+          docker rmi $IMAGE || true
+
+      # Result: atkcontainerhub.jfrog.io/omnicom-atk/omnicom_atk_maf:omnicom_atk_frontend_dev_2.0.0.001
+      - name: Build and push Frontend image
+        if: env.BUILD_FRONTEND == 'true'
+        run: |
+          IMAGE=${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}/${{ env.JFROG_FOLDER }}:${{ env.FRONTEND_TAG }}
+          docker build --no-cache --pull -t $IMAGE ${{ env.FRONTEND_PATH }}
+          docker push $IMAGE
+          docker rmi $IMAGE || true
+
+      # Result: atkcontainerhub.jfrog.io/omnicom-atk/omnicom_atk_maf:omnicom_atk_nginx_dev_2.0.0.001
+      - name: Build and push Nginx image
+        if: env.BUILD_NGINX == 'true'
+        run: |
+          IMAGE=${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}/${{ env.JFROG_FOLDER }}:${{ env.NGINX_TAG }}
+          docker build --no-cache --pull -t $IMAGE ${{ env.NGINX_PATH }}
+          docker push $IMAGE
+          docker rmi $IMAGE || true
+
+      # Result: atkcontainerhub.jfrog.io/omnicom-atk/omnicom_atk_maf:omnicom_atk_lite_llm_dev_2.0.0.001
+      - name: Build and push LiteLLM image
+        if: env.BUILD_LITE_LLM == 'true'
+        run: |
+          IMAGE=${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}/${{ env.JFROG_FOLDER }}:${{ env.LITE_LLM_TAG }}
+          docker build --no-cache --pull -t $IMAGE ${{ env.LITE_LLM_PATH }}
+          docker push $IMAGE
+          docker rmi $IMAGE || true
+
+      # Result: atkcontainerhub.jfrog.io/omnicom-atk/omnicom_atk_maf:omnicom_atk_grafana_dev_2.0.0.001
+      - name: Build and push Grafana image
+        if: env.BUILD_GRAFANA == 'true'
+        run: |
+          IMAGE=${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}/${{ env.JFROG_FOLDER }}:${{ env.GRAFANA_TAG }}
+          docker build --no-cache --pull -t $IMAGE ${{ env.GRAFANA_PATH }}
+          docker push $IMAGE
+          docker rmi $IMAGE || true
+
+      - name: Build and push AgentGateway Engine image
+        if: env.BUILD_AGENTGATEWAY_Engine == 'true'
+        run: |
+          docker build --no-cache --pull \
+            -t ${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}/${{ env.JFROG_FOLDER }}:${{ env.AGENTGATEWAY_Engine_TAG }} \
+            ${{ env.AGENTGATEWAY_Engine_PATH }}
+          docker push ${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}/${{ env.JFROG_FOLDER }}:${{ env.AGENTGATEWAY_Engine_TAG }}
+
+      - name: Build and push AgentGateway image
+        if: env.BUILD_AGENTGATEWAY_UI == 'true'
+        run: |
+          docker build --no-cache --pull \
+            -t ${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}/${{ env.JFROG_FOLDER }}:${{ env.AGENTGATEWAY_UI_TAG }} \
+            ${{ env.AGENTGATEWAY_UI_PATH }}
+          docker push ${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}/${{ env.JFROG_FOLDER }}:${{ env.AGENTGATEWAY_UI_TAG }}

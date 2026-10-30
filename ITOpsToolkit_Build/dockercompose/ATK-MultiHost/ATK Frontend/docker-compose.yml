@@ -1,0 +1,176 @@
+# =============================================================================
+# ATK — FRONTEND machine (10.106.6.228)
+#
+# Runs: Frontend (React), Admin Console builder + nginx (/v2), nginx
+# Everything else (Vault, Keycloak, Backend, Grafana, LiteLLM, Postgres) runs
+# on the OTHER machine (10.106.6.15) — see ../ATK-Core/
+#
+# DNS record served by the nginx in this file:
+#   autonomousitopstoolkitdev.familydollar.com  -> Frontend       (/)
+#                     Admin Console  (/v2/)
+#
+# WHY THE ADMIN CONSOLE LIVES HERE AND NOT WITH THE BACKEND
+#   The frontend loads the admin console as a micro-frontend at runtime:
+#     https://autonomousitopstoolkitdev.familydollar.com/v2/itops-mfe/itops-mfe-remote-entry.js
+#   Keeping it on the same origin as the frontend means the browser loads that
+#   ES module with no CORS preflight and no extra headers to configure.
+#
+# NO CROSS-MACHINE CONTAINER TRAFFIC
+#   This compose file proxies nothing to 10.106.6.15. The browser calls
+#   backend-atkdev.familydollar.com and sso-atkdev.familydollar.com directly, using the URLs in
+#   config/config.json (frontend) and config/app-config.ts (admin console).
+#
+# BEFORE YOU START
+#   1. Fill in .env
+#   2. Fill in config/config.json       — frontend API + Keycloak URLs
+#   3. Fill in config/app-config.ts     — admin console API + Keycloak URLs
+#   4. Fill in config/public.pem        — Keycloak realm RS256 public key
+#   5. Fill in config/license.txt       — ATK license key
+#   6. Place the wildcard *.familydollar.com cert in ssl/
+#   7. docker compose up -d
+# =============================================================================
+
+services:
+
+  # ─── FRONTEND ────────────────────────────────────────────────────────────────
+
+  frontend-builder:
+    image: atkcontainerhub.jfrog.io/atk-main-2-3/atk-maf:frontend_2.3.3
+    container_name: atk-frontend-builder
+    command: >
+      sh -c "
+      cp /app/public.pem /app/public.pem 2>/dev/null;
+      cd /app &&
+      npm run build &&
+      rm -rf /shared/* &&
+      cp -r dist/* /shared/
+      "
+    environment:
+      PORT: "80"
+      BROWSER: none
+      VITE_APP_PIPELINE_STAGE: production
+      VITE_APP_BASE_PATH: /
+      VITE_ENABLE_DOCS_PAGE: "false"
+      VITE_ENABLE_DEV_SPACE_PAGE: "false"
+      VITE_ENABLE_SITE_MAP_PAGE: "false"
+      VITE_INCLUDE_DEVTOOLS_IN_BUILD: "false"
+    volumes:
+      - ./config/app-config.json:/app/public/app-config.json:ro
+      - ./config/app-config.ts:/app/src/config/app-config.ts:ro
+      - ./config/config.json:/app/public/config.json:ro
+      - ./config/public.pem:/app/public.pem:ro
+      - ./config/license.txt:/app/public/license.txt:ro
+      - frontend_dist:/shared
+    #depends_on:
+    #  - backend
+    networks:
+      - atk-network
+    restart: "no"
+
+  #frontend:
+  #  image: atkcontainerhub.jfrog.io/atk-main-2-3/atk-maf:frontend_2.3.3
+  #  container_name: atk-frontend
+  #  command: sh -c "cd /app && npm start"
+  #  environment:
+      # Micro-frontend remote entry — same origin as the frontend itself,
+      # served by the admin-frontend container through nginx at /v2/.
+  #    REACT_APP_ITOPS_MFE_URL: https://${FRONTEND_DNS_NAME}/v2/itops-mfe/itops-mfe-remote-entry.js
+  #    PORT: "80"
+  #    BROWSER: none
+  #  volumes:
+      # config.json supplies all API URLs and Keycloak config to the React app.
+      # It is read by the browser at runtime, so the URLs in it must be the
+      # PUBLIC ones on the core machine (backend-atkdev / sso-atkdev), not
+      # container names.
+  #    - ./config/config.json:/app/public/config.json:ro
+  #  networks:
+  #    - atk-network
+  #  restart: unless-stopped
+    # NOTE: no "depends_on: backend" — the backend is on the other machine.
+
+  # ─── ADMIN CONSOLE (/v2) ─────────────────────────────────────────────────────
+  # Two-step process:
+  #   Step 1 (builder): compiles the React admin console (~5 min), then exits
+  #   Step 2 (nginx):   serves the compiled output — starts after builder finishes
+  #
+  # app-config.ts is compiled INTO the bundle. If you change the DNS names or
+  # Keycloak config in it you must rebuild:
+  #   docker compose up --force-recreate admin-frontend-builder admin-frontend
+
+  #admin-frontend-builder:
+  #  image: atkcontainerhub.jfrog.io/atk-main-2-3/atk-maf:frontend_2.3.3
+  #  container_name: atk-admin-frontend-builder
+  #  environment:
+  #    VITE_APP_PIPELINE_STAGE: production
+  #    VITE_APP_BASE_PATH: /v2/
+  #    VITE_ENABLE_DOCS_PAGE: "true"
+  #    VITE_ENABLE_DEV_SPACE_PAGE: "true"
+  #  command: >
+  #    sh -c "cp /override/app-config.ts /app/src/config/app-config.ts &&
+  #           cd /app &&
+  #           GENERATE_SOURCEMAP=false NODE_OPTIONS=--max-old-space-size=4096 npm run build &&
+  #           cp -r dist/* /shared/"
+  #  volumes:
+      # app-config.ts: baseUrl -> https://backend-atkdev.familydollar.com/api
+      #                keycloak.url -> https://sso-atkdev.familydollar.com/auth/
+  #    - ./config/app-config.ts:/override/app-config.ts:ro
+      # public.pem: your Keycloak realm RSA public key
+      # (Keycloak Admin -> Realm Settings -> Keys -> RS256 -> Public Key)
+  #    - ./config/public.pem:/app/public.pem:ro
+      # license.txt: your ATK license key provided by Cognizant
+  #    - ./config/license.txt:/app/license.txt:ro
+  #    - admin-frontend-dist:/shared
+  #  networks:
+  #    - atk-network
+  #  restart: "no"
+
+  #admin-frontend:
+  #  image: nginx:alpine
+  #  container_name: atk-admin-frontend
+  #  volumes:
+  #    - admin-frontend-dist:/usr/share/nginx/html:ro
+  #    - ./config/nginx-v2.conf:/etc/nginx/nginx.conf:ro
+  #  depends_on:
+  #    admin-frontend-builder:
+  #      condition: service_completed_successfully
+  #  networks:
+  #    - atk-network
+  #  restart: unless-stopped
+
+  # ─── REVERSE PROXY ───────────────────────────────────────────────────────────
+  # Single vhost: atkdev.familydollar.com -> frontend (/) and admin console (/v2/).
+  # See config/nginx.conf.
+
+  nginx:
+    image: atkcontainerhub.jfrog.io/atk-main-2-3/atk-maf:nginx_2.3.1 #nginx:alpine
+    container_name: atk-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8443:8443"
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+      # ssl/: the same wildcard *.familydollar.com fullchain.pem + privkey.pem used on
+      # the core machine.
+      - ./ssl:/etc/nginx/ssl:ro
+      - frontend_dist:/usr/share/nginx/html:ro
+    depends_on:
+      frontend-builder:
+        condition: service_completed_successfully
+      #- admin-frontend
+    networks:
+      - atk-network
+    restart: unless-stopped
+
+# ─── NETWORKS ─────────────────────────────────────────────────────────────────
+
+networks:
+  atk-network:
+    driver: bridge
+
+# ─── VOLUMES ──────────────────────────────────────────────────────────────────
+# admin-frontend-dist holds the compiled admin console. Deleting it forces a
+# rebuild on the next "docker compose up".
+
+volumes:
+  frontend_dist:

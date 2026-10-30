@@ -1,0 +1,47 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "npm: dev",
+            "type": "npm",
+            "script": "dev",
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "npm: build",
+            "type": "npm",
+            "script": "build",
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "npm: preview",
+            "type": "npm",
+            "script": "preview",
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            "label": "npm: test",
+            "type": "npm",
+            "script": "test",
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            "label": "npm: lint:check",
+            "type": "npm",
+            "script": "lint:check",
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            "label": "npm: prettier:check",
+            "type": "npm",
+            "script": "prettier:check",
+            "group": "test",
+            "problemMatcher": []
+        }
+    ]
+}

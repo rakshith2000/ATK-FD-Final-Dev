@@ -1,0 +1,19 @@
+version: "3.8"
+services:
+  otel-lgtm:
+    image: grafana/otel-lgtm:latest
+    ports:
+      - "3000:3000"   # Grafana web UI
+      - "5327:4317"   # OTLP gRPC receiver
+      - "5328:4318"   # OTLP HTTP receiver
+    volumes:
+      # Optional: Persist data (create a local './data' directory first)
+      - ./data:/data
+      # Optional: Mount custom OTel collector configuration
+      # - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    networks:
+      - grafana-network
+
+networks:
+  grafana-network:
+    driver: bridge

@@ -1,0 +1,510 @@
+name: cd-qa
+###
+on:
+  push:
+    branches:
+      - qa
+  workflow_dispatch:
+  
+env:
+  JFROG_REGISTRY: 'atkcontainerhub.jfrog.io'
+  JFROG_REPO: 'integration'
+  AWS_REGION: 'ap-south-1'
+  CLUSTER_NAME: 'ATK-Demo-Cluster'
+  NAMESPACE: 'qa'
+  HELM_BASE_PATH: './build-configs/ITOpsToolkit_Build/qa_Build/helm_eks'
+  BUILD_KEYCLOAK: 'true'
+  BUILD_LITELLM: 'false'
+  BUILD_BACKEND: 'false'
+  BUILD_FRONTEND: 'true'
+  BUILD_GRAFANA: 'false'
+  BUILD_RABBITMQ: 'true'
+  BUILD_FASTEAI_CORE: 'true'
+  BUILD_FASTEAI_BACKEND: 'true'
+  BUILD_FASTEAI_MCP: 'true'
+  BUILD_FASTEAI_TASK_RUNNER: 'true'
+  BUILD_FASTEAI_CONSUMER: 'true'
+  BUILD_AGENTGATEWAY_ENGINE: 'false'
+  BUILD_AGENTGATEWAY_UI: 'false'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+   
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout Build Branch
+        uses: actions/checkout@v4
+        with:
+          repository: CognizantCodeHub/IPR001380_MAF
+          ref: build
+          path: build-configs
+          fetch-depth: 1
+
+      - name: Verify QA Build Charts
+        run: |
+          echo "=== HELM BASE PATH ==="
+          echo "${{ env.HELM_BASE_PATH }}"
+      
+          echo ""
+          echo "=== FASTEAI FILES ==="
+          find ${{ env.HELM_BASE_PATH }} -type f | grep -i Fasteai || true
+      
+          echo ""
+          echo "=== FASTEAI CORE ==="
+          ls -la ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Fasteai_Core || true
+      
+          echo ""
+          echo "=== FASTEAI BACKEND ==="
+          ls -la ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Fasteai_Backend || true
+      
+          echo ""
+          echo "=== FASTEAI MCP ==="
+          ls -la ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Fasteai_MCP || true
+
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.CLUSTER_NAME }}
+
+      - name: Create namespace and JFrog pull secret
+        run: |
+          kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl create secret docker-registry jfrog-pull-secret \
+            --docker-server=${{ env.JFROG_REGISTRY }} \
+            --docker-username=${{ secrets.JFROG_USER }} \
+            --docker-password=${{ secrets.JFROG_PASSWORD }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl patch serviceaccount default \
+            --namespace ${{ env.NAMESPACE }} \
+            -p '{"imagePullSecrets":[{"name":"jfrog-pull-secret"}]}'
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: latest
+
+      - name: Get Latest Integration Image Tags
+        run: |
+          REGISTRY=$(cat .github/component-registry-qa-cd.json)
+          COUNT=$(echo "$REGISTRY" | jq length)
+
+          > latest_tags.env
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "FETCHING INTEGRATION IMAGES"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          for i in $(seq 0 $((COUNT - 1))); do
+
+            NAME=$(echo "$REGISTRY" | jq -r ".[$i].name")
+
+           FLAG="BUILD_$(echo "$NAME" | tr '[:lower:]' '[:upper:]')"
+
+            VALUE="${!FLAG}"
+
+            echo "NAME=$NAME"
+            echo "FLAG=$FLAG"
+            echo "VALUE=$VALUE"
+
+            if [ "$VALUE" != "true" ]; then
+                echo "Skipping $NAME"
+                continue
+            fi
+
+            IMAGE=$(echo "$REGISTRY" | jq -r ".[$i].image")
+            COMPONENT_PR=$(echo "$REGISTRY" | jq -r ".[$i].pr_number // empty")
+            if [ "$NAME" = "keycloak" ]; then
+              echo "================================="
+              echo "DEBUG KEYCLOAK"
+              echo "NAME=$NAME"
+              echo "IMAGE=$IMAGE"
+              echo "COMPONENT_PR=$COMPONENT_PR"
+              echo "================================="
+            fi
+            TAGS_RESPONSE=$(curl -sS \
+              -u "${{ secrets.JFROG_USER }}:${{ secrets.JFROG_PASSWORD }}" \
+              "https://atkcontainerhub.jfrog.io/artifactory/api/docker/integration/v2/${IMAGE}/tags/list")
+
+           
+
+            echo "$TAGS_RESPONSE" | jq . >/dev/null 2>&1 || {
+              echo "ERROR: Invalid response from JFrog"
+              echo "$TAGS_RESPONSE"
+              exit 1
+            }
+
+            if echo "$TAGS_RESPONSE" | jq -e '.errors' >/dev/null 2>&1; then
+              echo "ERROR: Repository not found in JFrog"
+              echo "$TAGS_RESPONSE"
+              exit 1
+            fi
+
+            if [ -z "$COMPONENT_PR" ]; then
+
+              SELECTED_TAG=$(echo "$TAGS_RESPONSE" \
+                | jq -r '.tags[]?' \
+                | sort -V \
+                | tail -1)
+
+              DEPLOY_TYPE="LATEST"
+
+            else
+
+              SELECTED_TAG=$(echo "$TAGS_RESPONSE" \
+                | jq -r '.tags[]?' \
+                | grep "${COMPONENT_PR}" \
+                | sort -V \
+                | tail -1)
+
+              DEPLOY_TYPE="PR-${COMPONENT_PR}"
+
+            fi
+
+            if [ -z "$SELECTED_TAG" ] || [ "$SELECTED_TAG" = "null" ]; then
+              echo "ERROR: No matching tag found for image $IMAGE"
+              echo "Requested PR : ${COMPONENT_PR:-LATEST}"
+              exit 1
+            fi
+
+            echo "${IMAGE}=${SELECTED_TAG}" >> latest_tags.env
+
+            echo ""
+            echo "Component        : $NAME"
+            echo "PR Number        : ${COMPONENT_PR:-LATEST}"
+            echo "Image Repository : $IMAGE"
+            echo "Deployment Type  : $DEPLOY_TYPE"
+            echo "Selected Tag     : $SELECTED_TAG"
+            echo "Full Image       : ${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}/${IMAGE}:${SELECTED_TAG}"
+            echo "---------------------------------------------------"
+
+          done
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "FINAL IMAGE SUMMARY"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          cat latest_tags.env
+      # ── PRE-DEPLOY: configmap creation ───────────────────────────────────────
+
+      - name: Pre-deploy — LiteLLM configmaps
+        if: env.BUILD_LITELLM == 'true'
+        run: |
+          cd ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_LiteLLM/hotfix
+          echo "${{ env.NAMESPACE }}" | bash create_configmap_with_files.sh
+
+      - name: Pre-deploy — Backend configmaps
+        if: env.BUILD_BACKEND == 'true'
+        run: |
+          [ -f ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Backend/hotfix/vault_env ] && \
+          sed -i "s/VAULT_TOKEN_PLACEHOLDER/${{ secrets.VAULT_TOKEN }}/" \
+          ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Backend/hotfix/vault_env
+
+          cd ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Backend/hotfix
+          echo "${{ env.NAMESPACE }}" | bash create_configmap_with_files.sh
+
+      - name: Pre-deploy — Frontend configmaps
+        if: env.BUILD_FRONTEND == 'true'
+        run: |
+          cd ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Frontend/hotfix
+          echo "${{ env.NAMESPACE }}" | bash create_configmap_with_files.sh
+
+      - name: Pre-deploy — Grafana configmaps
+        if: env.BUILD_GRAFANA == 'true'
+        run: |
+          cd ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Grafana/hotfix
+          echo "${{ env.NAMESPACE }}" | bash create_configmap_with_files.sh
+
+      - name: Pre-deploy — Agent Gateway configmaps
+        if: env.BUILD_AGENTGATEWAY_ENGINE == 'true'
+        run: |
+          cd ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Agent_Gateway_Engine/hotfix
+          echo "${{ env.NAMESPACE }}" | bash create_configmap_with_files.sh
+
+      - name: Scale down and deploy
+        run: |
+          REGISTRY=$(cat .github/component-registry-qa-cd.json)
+          COUNT=$(echo "$REGISTRY" | jq length)
+
+          NS=${{ env.NAMESPACE }}
+          REG=${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}
+
+          for i in $(seq 0 $((COUNT - 1))); do
+
+            NAME=$(echo "$REGISTRY" | jq -r ".[$i].name")
+            FLAG="BUILD_$(echo "$NAME" | tr '[:lower:]' '[:upper:]')"
+
+            VALUE="${!FLAG}"
+
+            if [ "$VALUE" != "true" ]; then
+              continue
+            fi
+
+            IMAGE=$(echo "$REGISTRY" | jq -r ".[$i].image")
+            HELM_PATH=$(echo "$REGISTRY" | jq -r ".[$i].helm_path")
+            HELM_REL=$(echo "$REGISTRY" | jq -r ".[$i].helm_release")
+            DEPLOY_SH=$(echo "$REGISTRY" | jq -r ".[$i].deploy_script // empty")
+            STRATEGY=$(echo "$REGISTRY" | jq -r ".[$i].deploy_strategy")
+            DEPLOYMENT=$(echo "$REGISTRY" | jq -r ".[$i].k8s_deployment")
+            LABEL=$(echo "$REGISTRY" | jq -r ".[$i].k8s_label")
+            SCALE=$(echo "$REGISTRY" | jq -r ".[$i].scale_down")
+
+            LATEST_TAG=$(grep "^${IMAGE}=" latest_tags.env | cut -d '=' -f2 | head -1)
+
+            IMG="${REG}/${IMAGE}:${LATEST_TAG}"
+
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "Component : $NAME"
+            echo "Image     : $IMG"
+            echo "Helm Path : $HELM_PATH"
+            echo "Strategy  : $STRATEGY"
+            echo "Tag       : $LATEST_TAG"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+            if [ "$SCALE" == "true" ]; then
+              echo "Scaling down $DEPLOYMENT..."
+
+              kubectl scale deployment "$DEPLOYMENT" \
+                --replicas=0 \
+                -n "$NS" || true
+
+              kubectl wait pod \
+                -l "app.kubernetes.io/name=${LABEL}" \
+                --for=delete \
+                -n "$NS" \
+                --timeout=120s || true
+
+              kubectl delete pod \
+                -l "app.kubernetes.io/name=${LABEL}" \
+                -n "$NS" \
+                --force \
+                --grace-period=0 || true
+
+              echo "=== AFTER SCALE DOWN ==="
+              kubectl get deploy "$DEPLOYMENT" \
+                -n "$NS" \
+                -o wide || true
+                        
+              kubectl get deploy "$DEPLOYMENT" \
+                -n "$NS" \
+                -o jsonpath='{.spec.replicas}{"\n"}' || true
+            fi
+
+            case "$STRATEGY" in
+              atomic)
+                helm upgrade --install "$HELM_REL" "$HELM_PATH" \
+                  --namespace "$NS" \
+                  --set image.tag="${LATEST_TAG}" \
+                  --timeout 15m
+                ;;
+
+              no_wait)
+                helm upgrade --install "$HELM_REL" "$HELM_PATH" \
+                  --namespace "$NS" \
+                  --set image.tag="${LATEST_TAG}" \
+                  --wait=false
+                ;;
+
+              script)
+
+                echo "========================================"
+                echo "NAME=$NAME"
+                echo "HELM_PATH=$HELM_PATH"
+                echo "DEPLOY_SH=$DEPLOY_SH"
+                echo "LATEST_TAG=$LATEST_TAG"
+                echo "DEPLOYMENT=$DEPLOYMENT"
+                echo "========================================"
+                        
+                if [ -z "$DEPLOY_SH" ] || [ ! -f "${HELM_PATH}/${DEPLOY_SH}" ]; then
+                  echo "No deploy script for $NAME — skipping deploy step"
+                else
+                  (
+                    cd "$HELM_PATH"
+                        
+                    echo "PWD=$(pwd)"
+                    ls -la
+                        
+                    echo "Running deploy script..."
+                    NAMESPACE="$NS" \
+                    IMAGE_TAG="${LATEST_TAG}" \
+                    bash -x "$DEPLOY_SH"
+                        
+                    echo "Deploy script completed"
+                        
+                    echo "=== HELM STATUS ==="
+                    helm status "$HELM_REL" -n "$NS" || true
+                              
+                    echo "=== HELM HISTORY ==="
+                    helm history "$HELM_REL" -n "$NS" || true
+                        
+                    echo "=== DEPLOYMENT AFTER DEPLOY ==="
+                    kubectl get deploy "$DEPLOYMENT" \
+                      -n "$NS" \
+                      -o jsonpath='{.spec.replicas}{"\n"}' || true
+
+                    echo "=== DEPLOYMENT GENERATION ==="
+                    kubectl get deploy "$DEPLOYMENT" \
+                      -n "$NS" \
+                      -o jsonpath='{.metadata.generation}{" / "}{.status.observedGeneration}{"\n"}' || true
+
+                    echo "=== IMAGE AFTER DEPLOY ==="
+                    kubectl get deploy "$DEPLOYMENT" \
+                      -n "$NS" \
+                      -o jsonpath='{.spec.template.spec.initContainers[0].image}{"\n"}' || true
+                    )
+                fi
+                ;;
+
+              *)
+                echo "Unknown deploy_strategy '$STRATEGY' for $NAME — skipping"
+                ;;
+            esac
+
+          done
+
+      - name: Verify Deployment
+        run: |
+          REGISTRY=$(cat .github/component-registry-qa-cd.json)
+          COUNT=$(echo "$REGISTRY" | jq length)
+
+          for i in $(seq 0 $((COUNT - 1))); do
+
+            NAME=$(echo "$REGISTRY" | jq -r ".[$i].name")
+            FLAG="BUILD_$(echo "$NAME" | tr '[:lower:]' '[:upper:]')"
+
+           
+            VALUE="${!FLAG}"
+
+            if [ "$VALUE" != "true" ]; then
+              continue
+            fi
+            DEPLOYMENT=$(echo "$REGISTRY" | jq -r ".[$i].k8s_deployment")
+
+            if [ -z "$DEPLOYMENT" ] || [ "$DEPLOYMENT" = "null" ]; then
+              echo "Skipping rollout check for $NAME (no k8s_deployment)"
+              continue
+            fi
+
+            echo ""
+            echo "Checking rollout for $DEPLOYMENT"
+
+            kubectl rollout status deployment/"$DEPLOYMENT" \
+              -n "${{ env.NAMESPACE }}" \
+              --timeout=10m
+          done
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          NS=${{ env.NAMESPACE }}
+
+          echo "=== HELM RELEASES ==="
+          helm list -n "$NS"  || true
+
+          echo "=== PODS ==="
+          kubectl get pods -n "$NS" -o wide || true
+
+          echo "=== EVENTS ==="
+          kubectl get events -n "$NS" --sort-by=.metadata.creationTimestamp | tail -100 || true
+
+          echo "=== DEPLOYMENTS ==="
+          kubectl get deployments -n "$NS" || true
+
+          echo "Ingresses"
+          kubectl get ingress -n "${{ env.NAMESPACE }}" || true
+
+          kubectl get pods -n ${{ env.NAMESPACE }} 
+          kubectl get ingress -n ${{ env.NAMESPACE }}
+          kubectl get services -n ${{ env.NAMESPACE }}
+
+
+      
+
+      - name: Deployment Summary
+        if: success()
+        run: |
+          REGISTRY=$(cat .github/component-registry-qa-cd.json)
+          COUNT=$(echo "$REGISTRY" | jq length)
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "                QA DEPLOYMENT REPORT"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "Environment : ${{ env.NAMESPACE }}"
+          echo "Cluster     : ${{ env.CLUSTER_NAME }}"
+          echo "Namespace   : ${{ env.NAMESPACE }}"
+         
+          echo "Deployment Time : $(date)"
+          echo ""
+          echo "Components Successfully Deployed"
+          echo "----------------------------------------------------"
+          echo "Current deployment image:"
+          
+          for i in $(seq 0 $((COUNT - 1))); do
+
+            NAME=$(echo "$REGISTRY" | jq -r ".[$i].name")
+            FLAG="BUILD_$(echo "$NAME" | tr '[:lower:]' '[:upper:]')"
+
+            VALUE="${!FLAG}"
+
+            if [ "$VALUE" != "true" ]; then
+              continue
+            fi
+
+            IMAGE=$(echo "$REGISTRY" | jq -r ".[$i].image")
+            HELM_REL=$(echo "$REGISTRY" | jq -r ".[$i].helm_release")
+            DEPLOYMENT=$(echo "$REGISTRY" | jq -r ".[$i].k8s_deployment")
+
+            TAG=$(grep "^${IMAGE}=" latest_tags.env | cut -d '=' -f2 | head -1)
+
+            if [ -z "$DEPLOYMENT" ] || [ "$DEPLOYMENT" = "null" ]; then
+              echo ""
+              echo "Component  : $NAME"
+              echo "Image      : ${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}/${IMAGE}:${TAG}"
+              echo "Status     : IMAGE BUILT (no k8s deployment)"
+              continue
+            fi
+
+            READY=$(kubectl get deployment "$DEPLOYMENT" \
+              -n "${{ env.NAMESPACE }}" \
+              -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
+
+            DESIRED=$(kubectl get deployment "$DEPLOYMENT" \
+              -n "${{ env.NAMESPACE }}" \
+              -o jsonpath='{.status.replicas}' 2>/dev/null)
+
+            echo ""
+            echo "Component  : $NAME"
+            echo "Release    : $HELM_REL"
+            echo "Deployment : $DEPLOYMENT"
+            echo "Image      : ${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}/${IMAGE}:${TAG}"
+            echo "Replicas   : ${READY:-0}/${DESIRED:-0}"
+            echo "Status     : SUCCESS"
+            echo ""
+            echo "Current deployment image:"
+            kubectl get deploy "$DEPLOYMENT" \
+            -n "${{ env.NAMESPACE }}" \
+            -o jsonpath='{.spec.template.spec.initContainers[0].image}{"\n"}' || true
+          done
+
+          echo "----------------------------------------------------"
+          echo "Overall Result : SUCCESS"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -1,0 +1,12 @@
+__pycache__/
+elastic-docker/
+*.log
+.itsm_env
+.keycloak_env
+.vault_env
+.vault_type
+.env
+.venv/
+nohup.out
+model/
+test.*

@@ -1,0 +1,106 @@
+replicaCount: 1
+
+
+###########The Below Section is to declare Configmaps ###############
+configMaps:
+  - name: nginx
+  - name: public
+  - name: license
+  # Additional configmaps can be in the format above (No need to mention app-config.json because, its been taken care in configmap.yaml)
+
+###########The Below Section is for Volume Mounts ###############
+copyFiles:
+  - name: nginx
+    modifiedFileName: nginx.conf
+    source: /override/nginx.conf
+    destination: /etc/nginx/nginx.conf
+  - name: public
+    modifiedFileName: public.pem
+    source: /override2/public.pem
+    destination: /app/public.pem
+  - name: license
+    modifiedFileName: license.txt
+    source: /override3/license.txt
+    destination: /app/public/license.txt
+  # Additional files can be mounted by adding entries in the format above
+###############################################################
+
+
+###########For AGIC use#########
+ingress:
+  className: "azure-application-gateway"
+  annotations:
+    appgw.ingress.kubernetes.io/backend-protocol: "http"
+    appgw.ingress.kubernetes.io/health-probe-status-codes: "200-399"
+    appgw.ingress.kubernetes.io/ssl-redirect: "true"
+    appgw.ingress.kubernetes.io/health-probe-port: "<port>" #80
+    appgw.ingress.kubernetes.io/health-probe-path: "/"
+    #appgw.ingress.kubernetes.io/cookie-based-affinity: "true"
+################################    
+
+######For Nginx Ingress Controller######## Uncomment when needed
+#ingress:
+#className: "nginx"
+#annotations: {}
+##########################################
+
+image:
+  repository: <ACR ARN>/<Repo Name>
+  pullPolicy: Always
+  tag: "<Tag>"
+
+nameOverride: "itops-frontend"
+fullnameOverride: "itops-platform-itops-frontend"
+service:
+  type: ClusterIP
+  port: <Frontend port> #80
+  targetPort: <Frontend port> #80
+host:
+  name: "<DNS Name>" #without https
+
+# Below secret is for SSL certtificates. Remove this if its not needed 
+secret:
+  name: "<K8s secret name>"
+
+# Uncomment this only if the image is getting pulled from JFrog directly via helms 
+# jfrogSecret:
+#   name: <secret-name>
+
+
+nodeSelector:
+  <label-key>: <label-value>
+
+#Probes can be disabled by setting 'false' for the below fields
+probes:
+  liveness:
+    enabled: true
+    path: /
+  readiness:
+    enabled: true
+    path: /
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+autoscaling:
+  enabled: false
+
+env:
+  - name: VITE_APP_PIPELINE_STAGE
+    value: "<>" #production 
+  - name: VITE_APP_BASE_PATH
+    value: "/"
+  - name: VITE_ENABLE_DOCS_PAGE
+    value: "<>" #true/false -> Debugging purpose
+  - name: VITE_ENABLE_DEV_SPACE_PAGE
+    value: "<>" #true/false -> Debugging purpose
+  - name: VITE_ENABLE_SITE_MAP_PAGE
+    value: "<>" #true/false -> Debugging purpose
+  - name: VITE_INCLUDE_DEVTOOLS_IN_BUILD
+    value: "<>" #true/false -> Debugging purpose
+

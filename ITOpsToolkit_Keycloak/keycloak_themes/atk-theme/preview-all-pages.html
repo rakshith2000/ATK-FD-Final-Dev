@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>ATK Theme — All Pages Preview</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    :root {
+      --navy:     #0d1b3e;
+      --blue:     #1a56d6;
+      --teal:     #29c6c6;
+      --white:    #ffffff;
+      --muted:    rgba(255,255,255,0.58);
+      --border:   #c8d3ea;
+      --inp-bg:   #f8faff;
+      --radius:   8px;
+      --red:      #dc2626;
+      --green:    #16a34a;
+    }
+
+    html, body { height: 100%; margin: 0; padding: 0;
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif; }
+
+    /* ── Page switcher bar ──────────────────────────────── */
+    .switcher {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 999;
+      background: #1e293b;
+      display: flex; gap: 2px; padding: 6px 10px; overflow-x: auto;
+      scrollbar-width: thin;
+    }
+
+    .switcher button {
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.65);
+      border: none; border-radius: 5px;
+      padding: 5px 13px; font-size: 0.75rem; font-weight: 500;
+      cursor: pointer; white-space: nowrap; font-family: inherit;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .switcher button:hover  { background: rgba(255,255,255,0.15); color: #fff; }
+    .switcher button.active { background: var(--blue); color: #fff; }
+
+    /* ── Screen wrapper ─────────────────────────────────── */
+    .screen { display: none; padding-top: 42px; min-height: 100vh; }
+    .screen.active { display: block; }
+
+    /* ── Split layout ───────────────────────────────────── */
+    .page { display: flex; min-height: calc(100vh - 42px); }
+
+    /* ── Left panel ─────────────────────────────────────── */
+    .left {
+      width: 42%; min-height: calc(100vh - 42px);
+      background: linear-gradient(160deg, #091428 0%, #0d1b3e 55%, #122050 100%);
+      display: flex; flex-direction: column;
+      padding: 1.2rem 2rem;
+      color: var(--white); position: relative; overflow: hidden;
+    }
+
+    .left::before {
+      content: ''; position: absolute; inset: 0;
+      background-image: radial-gradient(circle, rgba(255,255,255,0.11) 1px, transparent 1px);
+      background-size: 28px 28px; pointer-events: none;
+    }
+
+    .left-top    { position: relative; z-index: 1; }
+    .left-body   { flex: 1; display: flex; flex-direction: column; justify-content: center; position: relative; z-index: 1; }
+    .left-footer { position: relative; z-index: 1; margin-top: 1.5rem; }
+
+    .logo { display: flex; align-items: center; margin-bottom: 0; }
+    .logo img { height: 44px; }
+
+    .tagline { font-size: 0.67rem; font-weight: 700; letter-spacing: 0.13em;
+      text-transform: uppercase; color: var(--teal); margin: 0 0 0.8rem; }
+
+    .brand-title { font-size: 2.1rem; font-weight: 800; line-height: 1.2;
+      color: var(--white); margin: 0 0 0.85rem; }
+    .brand-title span { color: var(--teal); }
+
+    .bullets { font-size: 0.9rem; font-weight: 500; color: rgba(255,255,255,0.80);
+      margin: 0 0 1rem; letter-spacing: 0.02em; }
+
+    .desc { font-size: 0.82rem; line-height: 1.75; color: var(--muted); max-width: 360px; }
+
+    .left-footer p { font-size: 0.72rem; color: rgba(255,255,255,0.32); margin: 0; }
+
+    /* ── Right panel ─────────────────────────────────────── */
+    .right {
+      width: 58%; min-height: calc(100vh - 42px);
+      background: var(--white);
+      display: flex; align-items: center; justify-content: center;
+      padding: 3rem 2rem;
+    }
+
+    .form-box { width: 100%; max-width: 420px; }
+
+    .accent-bar { width: 44px; height: 4px; background: var(--blue);
+      border-radius: 2px; margin-bottom: 1.4rem; }
+
+    .page-title { font-size: 2rem; font-weight: 700; color: #111827; margin: 0 0 0.5rem; }
+    .page-sub   { font-size: 0.85rem; color: #6b7280; margin: 0 0 1.8rem; line-height: 1.5; }
+
+    /* ── Form fields ─────────────────────────────────────── */
+    .field { margin-bottom: 1.05rem; }
+
+    .field label { display: block; font-size: 0.84rem; font-weight: 600;
+      color: #374151; margin-bottom: 0.38rem; }
+
+    .field label .req { color: var(--red); margin-left: 2px; }
+
+    /* text / email input */
+    .input-wrap {
+      display: flex; align-items: center;
+      border: 1.5px solid var(--border); border-radius: var(--radius);
+      background: var(--inp-bg); transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .input-wrap:focus-within {
+      border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26,86,214,0.11);
+    }
+
+    .input-wrap.error { border-color: var(--red); }
+
+    .input-wrap input, .input-wrap select {
+      flex: 1; border: none; outline: none; background: transparent;
+      padding: 0.68rem 0.8rem; font-size: 0.88rem; color: #1f2937; font-family: inherit;
+    }
+
+    .input-wrap input::placeholder, .input-wrap select::placeholder { color: #9ca3af; }
+
+    .icon { padding: 0 0.72rem; color: #9ca3af; display: flex; align-items: center; flex-shrink: 0; }
+
+    /* password */
+    .pw-wrap {
+      display: flex; align-items: stretch;
+      border: 1.5px solid var(--border); border-radius: var(--radius);
+      background: var(--inp-bg); overflow: hidden;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .pw-wrap:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26,86,214,0.11); }
+
+    .pw-wrap input {
+      flex: 1; border: none; outline: none; background: transparent;
+      padding: 0.68rem 0.8rem; font-size: 0.88rem; color: #1f2937; font-family: inherit;
+    }
+
+    .pw-wrap input::placeholder { color: #9ca3af; }
+
+    .eye-btn { background: transparent; border: none; border-left: 1px solid var(--border);
+      padding: 0 0.8rem; cursor: pointer; color: #6b7280; display: flex; align-items: center; }
+    .eye-btn:hover { color: var(--blue); }
+
+    /* textarea */
+    .field textarea {
+      width: 100%; border: 1.5px solid var(--border); border-radius: var(--radius);
+      background: var(--inp-bg); padding: 0.68rem 0.8rem; font-size: 0.88rem;
+      color: #1f2937; font-family: inherit; resize: vertical; outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .field textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26,86,214,0.11); }
+
+    .forgot-row { display: flex; justify-content: flex-end; margin-top: 0.38rem; }
+    .forgot-row a { font-size: 0.82rem; color: var(--blue); text-decoration: none; font-weight: 500; }
+    .forgot-row a:hover { text-decoration: underline; }
+
+    .helper-text { font-size: 0.78rem; color: #6b7280; margin-top: 0.3rem; }
+    .helper-text.err { color: var(--red); }
+
+    /* ── Two-column row ──────────────────────────────────── */
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+
+    /* ── Buttons ─────────────────────────────────────────── */
+    .btn-primary {
+      display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+      width: 100%; margin-top: 1.25rem; padding: 0.82rem 1rem;
+      background: linear-gradient(135deg, #0d1b3e 0%, #1a3a8f 100%);
+      color: var(--white); font-size: 1rem; font-weight: 600; font-family: inherit;
+      border: none; border-radius: var(--radius); cursor: pointer; letter-spacing: 0.02em;
+      transition: opacity 0.18s;
+    }
+
+    .btn-primary:hover { opacity: 0.88; }
+
+    .btn-secondary {
+      display: flex; align-items: center; justify-content: center;
+      width: 100%; margin-top: 0.65rem; padding: 0.76rem 1rem;
+      background: var(--white); color: var(--navy); font-size: 0.95rem;
+      font-weight: 600; font-family: inherit;
+      border: 1.5px solid var(--navy); border-radius: var(--radius);
+      cursor: pointer; text-decoration: none; transition: background 0.18s;
+    }
+
+    .btn-secondary:hover { background: #f0f4ff; }
+
+    .btn-link {
+      background: none; border: none; color: var(--blue); font-size: 0.88rem;
+      font-weight: 500; cursor: pointer; font-family: inherit; padding: 0;
+      text-decoration: none;
+    }
+
+    .btn-link:hover { text-decoration: underline; }
+
+    /* ── Or divider ──────────────────────────────────────── */
+    .or-divider {
+      display: flex; align-items: center; gap: 0.75rem;
+      margin: 1.1rem 0; color: #9ca3af; font-size: 0.82rem;
+    }
+
+    .or-divider::before, .or-divider::after {
+      content: ''; flex: 1; height: 1px; background: #e5e7eb;
+    }
+
+    /* ── Alert banners ───────────────────────────────────── */
+    .alert {
+      display: flex; align-items: flex-start; gap: 0.6rem;
+      padding: 0.75rem 1rem; border-radius: var(--radius);
+      font-size: 0.84rem; margin-bottom: 1.2rem;
+    }
+
+    .alert.info    { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; }
+    .alert.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+    .alert.error   { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
+    .alert.warning { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+    .alert-icon    { flex-shrink: 0; margin-top: 1px; }
+
+    /* ── OTP boxes ───────────────────────────────────────── */
+    .otp-row { display: flex; gap: 0.6rem; justify-content: center; margin-bottom: 1.2rem; }
+
+    .otp-box {
+      width: 48px; height: 56px; text-align: center; font-size: 1.4rem; font-weight: 700;
+      border: 1.5px solid var(--border); border-radius: var(--radius);
+      background: var(--inp-bg); outline: none; font-family: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .otp-box:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26,86,214,0.11); }
+
+    /* ── Register / info row ─────────────────────────────── */
+    .info-row { margin-top: 1.2rem; font-size: 0.85rem; color: #6b7280; }
+    .info-row a { color: var(--blue); font-weight: 600; text-decoration: none; }
+    .info-row a:hover { text-decoration: underline; }
+
+    /* ── Success card ────────────────────────────────────── */
+    .success-card {
+      text-align: center; padding: 1.5rem 0;
+    }
+
+    .success-icon {
+      width: 64px; height: 64px; border-radius: 50%;
+      background: #f0fdf4; border: 2px solid #bbf7d0;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 1.2rem;
+    }
+
+    /* ── Checkbox ────────────────────────────────────────── */
+    .check-row { display: flex; align-items: flex-start; gap: 0.5rem; margin-bottom: 1rem; }
+    .check-row input[type=checkbox] { accent-color: var(--blue); margin-top: 2px; flex-shrink: 0; }
+    .check-row label { font-size: 0.83rem; color: #374151; cursor: pointer; }
+    .check-row a { color: var(--blue); text-decoration: none; font-weight: 500; }
+    .check-row a:hover { text-decoration: underline; }
+
+    /* ── Password strength meter ─────────────────────────── */
+    .strength-bar { display: flex; gap: 4px; margin-top: 6px; }
+    .strength-seg { flex: 1; height: 4px; border-radius: 2px; background: #e5e7eb; }
+    .strength-seg.weak   { background: #ef4444; }
+    .strength-seg.medium { background: #f59e0b; }
+    .strength-seg.strong { background: #22c55e; }
+    .strength-label { font-size: 0.75rem; color: #6b7280; margin-top: 4px; }
+
+    /* ── Responsive ──────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .left  { display: none; }
+      .right { width: 100%; }
+      .row-2 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     PAGE SWITCHER
+══════════════════════════════════════════════════════════════ -->
+<div class="switcher">
+  <button class="active"  onclick="show('login')">Login</button>
+  <button onclick="show('register')">Register</button>
+  <button onclick="show('forgot')">Forgot Password</button>
+  <button onclick="show('reset-sent')">Reset Email Sent</button>
+  <button onclick="show('update-password')">Update Password</button>
+  <button onclick="show('otp')">OTP / 2FA</button>
+  <button onclick="show('verify-email')">Verify Email</button>
+  <button onclick="show('select-auth')">Select Authenticator</button>
+  <button onclick="show('error')">Error</button>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     1. LOGIN
+══════════════════════════════════════════════════════════════ -->
+<div class="screen active" id="s-login">
+<div class="page">
+  <div class="left">
+    <div class="left-top">
+      <div class="logo"><img src="login/resources/img/logo.png" alt="ATK Logo"/></div>
+    </div>
+    <div class="left-body">
+      <p class="tagline">Transform your IT operations with</p>
+      <h1 class="brand-title">Autonomous <span>ITOps</span> Toolkit</h1>
+      <p class="bullets">• Automate &nbsp;&nbsp;• Optimize &nbsp;&nbsp;• Scale</p>
+      <p class="desc">Your intelligent AI assistant for unified, intelligent IT operations — resolving faster, running smarter, built for what's next.</p>
+    </div>
+    <div class="left-footer"><p>© Cognizant. All rights reserved.</p></div>
+  </div>
+
+  <div class="right">
+    <div class="form-box">
+      <div class="accent-bar"></div>
+      <h2 class="page-title">Welcome!</h2>
+
+      <form action="#" novalidate>
+        <div class="field">
+          <label for="l-user">Username</label>
+          <div class="input-wrap">
+            <span class="icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+            <input type="text" id="l-user" placeholder="Enter your username or employee id"/>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="l-pass">Password</label>
+          <div class="pw-wrap" id="pw1">
+            <span class="icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+            <input type="password" id="l-pass" placeholder="Enter your password"/>
+            <button type="button" class="eye-btn" onclick="togglePw('l-pass',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+          <div class="forgot-row"><a href="#">Forgot Password?</a></div>
+        </div>
+
+        <button type="submit" class="btn-primary">
+          Sign In
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </form>
+
+      <div class="or-divider">or</div>
+      <a href="#" class="btn-secondary">Login With SSO</a>
+      <div class="info-row">New user? <a href="#">Register</a></div>
+      <div class="info-row">For Support contact <a href="mailto:ATKGlobalSupport@cognizant.com">ATKGlobalSupport@cognizant.com</a></div>
+    </div>
+  </div>
+</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     2. REGISTER
+══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s-register">
+<div class="page">
+  <div class="left">
+    <div class="left-top"><div class="logo"><img src="login/resources/img/logo.png" alt="ATK Logo"/></div></div>
+    <div class="left-body">
+      <p class="tagline">Transform your IT operations with</p>
+      <h1 class="brand-title">Autonomous <span>ITOps</span> Toolkit</h1>
+      <p class="bullets">• Automate &nbsp;&nbsp;• Optimize &nbsp;&nbsp;• Scale</p>
+      <p class="desc">Your intelligent AI assistant for unified, intelligent IT operations — resolving faster, running smarter, built for what's next.</p>
+    </div>
+    <div class="left-footer"><p>© Cognizant. All rights reserved.</p></div>
+  </div>
+
+  <div class="right">
+    <div class="form-box">
+      <div class="accent-bar"></div>
+      <h2 class="page-title">Create Account</h2>
+      <p class="page-sub">Fill in your details to get started.</p>
+
+      <form action="#" novalidate>
+        <div class="row-2">
+          <div class="field">
+            <label for="r-fname">First Name <span class="req">*</span></label>
+            <div class="input-wrap"><input type="text" id="r-fname" placeholder="John"/></div>
+          </div>
+          <div class="field">
+            <label for="r-lname">Last Name <span class="req">*</span></label>
+            <div class="input-wrap"><input type="text" id="r-lname" placeholder="Doe"/></div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="r-email">Email <span class="req">*</span></label>
+          <div class="input-wrap">
+            <span class="icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></span>
+            <input type="email" id="r-email" placeholder="john.doe@company.com"/>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="r-uname">Username <span class="req">*</span></label>
+          <div class="input-wrap">
+            <span class="icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+            <input type="text" id="r-uname" placeholder="Choose a username"/>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="r-pass">Password <span class="req">*</span></label>
+          <div class="pw-wrap">
+            <span class="icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+            <input type="password" id="r-pass" placeholder="Min. 8 characters" oninput="updateStrength(this.value)"/>
+            <button type="button" class="eye-btn" onclick="togglePw('r-pass',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+          <div class="strength-bar">
+            <div class="strength-seg" id="s1"></div>
+            <div class="strength-seg" id="s2"></div>
+            <div class="strength-seg" id="s3"></div>
+            <div class="strength-seg" id="s4"></div>
+          </div>
+          <div class="strength-label" id="s-label"></div>
+        </div>
+
+        <div class="field">
+          <label for="r-pass2">Confirm Password <span class="req">*</span></label>
+          <div class="pw-wrap">
+            <span class="icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+            <input type="password" id="r-pass2" placeholder="Re-enter password"/>
+            <button type="button" class="eye-btn" onclick="togglePw('r-pass2',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+        </div>
+
+        <div class="check-row">
+          <input type="checkbox" id="r-terms"/>
+          <label for="r-terms">I agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a></label>
+        </div>
+
+        <button type="submit" class="btn-primary">Create Account</button>
+        <a href="#" class="btn-secondary" onclick="show('login');return false;">← Back to Login</a>
+      </form>
+    </div>
+  </div>
+</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     3. FORGOT PASSWORD
+══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s-forgot">
+<div class="page">
+  <div class="left">
+    <div class="left-top"><div class="logo"><img src="login/resources/img/logo.png" alt="ATK Logo"/></div></div>
+    <div class="left-body">
+      <p class="tagline">Transform your IT operations with</p>
+      <h1 class="brand-title">Autonomous <span>ITOps</span> Toolkit</h1>
+      <p class="bullets">• Automate &nbsp;&nbsp;• Optimize &nbsp;&nbsp;• Scale</p>
+      <p class="desc">Your intelligent AI assistant for unified, intelligent IT operations — resolving faster, running smarter, built for what's next.</p>
+    </div>
+    <div class="left-footer"><p>© Cognizant. All rights reserved.</p></div>
+  </div>
+
+  <div class="right">
+    <div class="form-box">
+      <div class="accent-bar"></div>
+      <h2 class="page-title">Forgot Password?</h2>
+      <p class="page-sub">Enter your username or email and we'll send you a link to reset your password.</p>
+
+      <form action="#" novalidate>
+        <div class="field">
+          <label for="f-email">Username or Email</label>
+          <div class="input-wrap">
+            <span class="icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></span>
+            <input type="text" id="f-email" placeholder="Enter your username or email" autofocus/>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary">Send Reset Link</button>
+        <a href="#" class="btn-secondary" onclick="show('login');return false;">← Back to Login</a>
+      </form>
+    </div>
+  </div>
+</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     4. RESET EMAIL SENT
+══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s-reset-sent">
+<div class="page">
+  <div class="left">
+    <div class="left-top"><div class="logo"><img src="login/resources/img/logo.png" alt="ATK Logo"/></div></div>
+    <div class="left-body">
+      <p class="tagline">Transform your IT operations with</p>
+      <h1 class="brand-title">Autonomous <span>ITOps</span> Toolkit</h1>
+      <p class="bullets">• Automate &nbsp;&nbsp;• Optimize &nbsp;&nbsp;• Scale</p>
+      <p class="desc">Your intelligent AI assistant for unified, intelligent IT operations — resolving faster, running smarter, built for what's next.</p>
+    </div>
+    <div class="left-footer"><p>© Cognizant. All rights reserved.</p></div>
+  </div>
+
+  <div class="right">
+    <div class="form-box">
+      <div class="accent-bar"></div>
+      <div class="success-card">
+        <div class="success-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        </div>
+        <h2 class="page-title">Check your email</h2>
+        <p class="page-sub" style="text-align:center">We've sent a password reset link to your email address. Please check your inbox and follow the instructions.</p>
+
+        <div class="alert info" style="text-align:left;margin-top:1.5rem">
+          <span class="alert-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span>
+          <span>Didn't receive the email? Check your spam folder or <a href="#" style="color:var(--blue)">resend the link</a>.</span>
+        </div>
+
+        <a href="#" class="btn-secondary" onclick="show('login');return false;">← Back to Login</a>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     5. UPDATE PASSWORD
+══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s-update-password">
+<div class="page">
+  <div class="left">
+    <div class="left-top"><div class="logo"><img src="login/resources/img/logo.png" alt="ATK Logo"/></div></div>
+    <div class="left-body">
+      <p class="tagline">Transform your IT operations with</p>
+      <h1 class="brand-title">Autonomous <span>ITOps</span> Toolkit</h1>
+      <p class="bullets">• Automate &nbsp;&nbsp;• Optimize &nbsp;&nbsp;• Scale</p>
+      <p class="desc">Your intelligent AI assistant for unified, intelligent IT operations — resolving faster, running smarter, built for what's next.</p>
+    </div>
+    <div class="left-footer"><p>© Cognizant. All rights reserved.</p></div>
+  </div>
+
+  <div class="right">
+    <div class="form-box">
+      <div class="accent-bar"></div>
+      <h2 class="page-title">Update Password</h2>
+      <p class="page-sub">Choose a strong new password for your account.</p>
+
+      <form action="#" novalidate>
+        <div class="field">
+          <label for="up-new">New Password <span class="req">*</span></label>
+          <div class="pw-wrap">
+            <span class="icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+            <input type="password" id="up-new" placeholder="Enter new password"/>
+            <button type="button" class="eye-btn" onclick="togglePw('up-new',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="up-confirm">Confirm New Password <span class="req">*</span></label>
+          <div class="pw-wrap">
+            <span class="icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+            <input type="password" id="up-confirm" placeholder="Re-enter new password"/>
+            <button type="button" class="eye-btn" onclick="togglePw('up-confirm',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+        </div>
+
+        <div class="check-row">
+          <input type="checkbox" id="up-logout" checked/>
+          <label for="up-logout">Sign out from all other devices</label>
+        </div>
+
+        <button type="submit" class="btn-primary">Update Password</button>
+      </form>
+    </div>
+  </div>
+</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     6. OTP / 2FA
+══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s-otp">
+<div class="page">
+  <div class="left">
+    <div class="left-top"><div class="logo"><img src="login/resources/img/logo.png" alt="ATK Logo"/></div></div>
+    <div class="left-body">
+      <p class="tagline">Transform your IT operations with</p>
+      <h1 class="brand-title">Autonomous <span>ITOps</span> Toolkit</h1>
+      <p class="bullets">• Automate &nbsp;&nbsp;• Optimize &nbsp;&nbsp;• Scale</p>
+      <p class="desc">Your intelligent AI assistant for unified, intelligent IT operations — resolving faster, running smarter, built for what's next.</p>
+    </div>
+    <div class="left-footer"><p>© Cognizant. All rights reserved.</p></div>
+  </div>
+
+  <div class="right">
+    <div class="form-box">
+      <div class="accent-bar"></div>
+      <h2 class="page-title">Two-Factor Auth</h2>
+      <p class="page-sub">Enter the 6-digit code from your authenticator app.</p>
+
+      <form action="#" novalidate>
+        <div class="otp-row">
+          <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" onkeyup="otpNext(this,0)"/>
+          <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" onkeyup="otpNext(this,1)"/>
+          <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" onkeyup="otpNext(this,2)"/>
+          <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" onkeyup="otpNext(this,3)"/>
+          <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" onkeyup="otpNext(this,4)"/>
+          <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" onkeyup="otpNext(this,5)"/>
+        </div>
+
+        <div class="helper-text" style="text-align:center;margin-bottom:0.5rem">
+          Code expires in <strong>02:48</strong> &nbsp;·&nbsp; <a href="#" class="btn-link">Resend code</a>
+        </div>
+
+        <button type="submit" class="btn-primary">Verify & Sign In</button>
+        <a href="#" class="btn-secondary" onclick="show('login');return false;">← Back to Login</a>
+      </form>
+    </div>
+  </div>
+</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     7. VERIFY EMAIL
+══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s-verify-email">
+<div class="page">
+  <div class="left">
+    <div class="left-top"><div class="logo"><img src="login/resources/img/logo.png" alt="ATK Logo"/></div></div>
+    <div class="left-body">
+      <p class="tagline">Transform your IT operations with</p>
+      <h1 class="brand-title">Autonomous <span>ITOps</span> Toolkit</h1>
+      <p class="bullets">• Automate &nbsp;&nbsp;• Optimize &nbsp;&nbsp;• Scale</p>
+      <p class="desc">Your intelligent AI assistant for unified, intelligent IT operations — resolving faster, running smarter, built for what's next.</p>
+    </div>
+    <div class="left-footer"><p>© Cognizant. All rights reserved.</p></div>
+  </div>
+
+  <div class="right">
+    <div class="form-box">
+      <div class="accent-bar"></div>
+      <div class="success-card">
+        <div class="success-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        </div>
+        <h2 class="page-title">Verify your email</h2>
+        <p class="page-sub" style="text-align:center">
+          An email has been sent to <strong>j***@company.com</strong>.<br/>
+          Click the link in the email to verify your account.
+        </p>
+
+        <div class="alert info" style="text-align:left;margin-top:1.5rem">
+          <span class="alert-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span>
+          <span>Didn't get the email? Check spam or <a href="#" style="color:var(--blue)">click here to resend</a>.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     8. SELECT AUTHENTICATOR
+══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s-select-auth">
+<div class="page">
+  <div class="left">
+    <div class="left-top"><div class="logo"><img src="login/resources/img/logo.png" alt="ATK Logo"/></div></div>
+    <div class="left-body">
+      <p class="tagline">Transform your IT operations with</p>
+      <h1 class="brand-title">Autonomous <span>ITOps</span> Toolkit</h1>
+      <p class="bullets">• Automate &nbsp;&nbsp;• Optimize &nbsp;&nbsp;• Scale</p>
+      <p class="desc">Your intelligent AI assistant for unified, intelligent IT operations — resolving faster, running smarter, built for what's next.</p>
+    </div>
+    <div class="left-footer"><p>© Cognizant. All rights reserved.</p></div>
+  </div>
+
+  <div class="right">
+    <div class="form-box">
+      <div class="accent-bar"></div>
+      <h2 class="page-title">Sign In</h2>
+      <p class="page-sub">Choose how you'd like to verify your identity.</p>
+
+      <div style="display:flex;flex-direction:column;gap:0.75rem;margin-top:0.5rem">
+
+        <button type="button" style="display:flex;align-items:center;gap:1rem;padding:1rem 1.1rem;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--inp-bg);cursor:pointer;text-align:left;font-family:inherit;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+          <span style="width:40px;height:40px;border-radius:8px;background:#eff6ff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a56d6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+          </span>
+          <div>
+            <div style="font-weight:600;font-size:0.9rem;color:#111827">Authenticator App (OTP)</div>
+            <div style="font-size:0.78rem;color:#6b7280;margin-top:2px">Use your authenticator app to generate a code</div>
+          </div>
+          <svg style="margin-left:auto;color:#9ca3af" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+
+        <button type="button" style="display:flex;align-items:center;gap:1rem;padding:1rem 1.1rem;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--inp-bg);cursor:pointer;text-align:left;font-family:inherit;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+          <span style="width:40px;height:40px;border-radius:8px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2H3v16h5v4l4-4h5l4-4V2z"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="13" y2="13"/></svg>
+          </span>
+          <div>
+            <div style="font-weight:600;font-size:0.9rem;color:#111827">Email OTP</div>
+            <div style="font-size:0.78rem;color:#6b7280;margin-top:2px">Receive a one-time code in your email</div>
+          </div>
+          <svg style="margin-left:auto;color:#9ca3af" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+
+        <button type="button" style="display:flex;align-items:center;gap:1rem;padding:1rem 1.1rem;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--inp-bg);cursor:pointer;text-align:left;font-family:inherit;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+          <span style="width:40px;height:40px;border-radius:8px;background:#fdf4ff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          </span>
+          <div>
+            <div style="font-weight:600;font-size:0.9rem;color:#111827">Security Key / Passkey</div>
+            <div style="font-size:0.78rem;color:#6b7280;margin-top:2px">Use a hardware key or biometric passkey</div>
+          </div>
+          <svg style="margin-left:auto;color:#9ca3af" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+
+      </div>
+
+      <a href="#" class="btn-secondary" style="margin-top:1.2rem" onclick="show('login');return false;">← Back to Login</a>
+    </div>
+  </div>
+</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     9. ERROR
+══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s-error">
+<div class="page">
+  <div class="left">
+    <div class="left-top"><div class="logo"><img src="login/resources/img/logo.png" alt="ATK Logo"/></div></div>
+    <div class="left-body">
+      <p class="tagline">Transform your IT operations with</p>
+      <h1 class="brand-title">Autonomous <span>ITOps</span> Toolkit</h1>
+      <p class="bullets">• Automate &nbsp;&nbsp;• Optimize &nbsp;&nbsp;• Scale</p>
+      <p class="desc">Your intelligent AI assistant for unified, intelligent IT operations — resolving faster, running smarter, built for what's next.</p>
+    </div>
+    <div class="left-footer"><p>© Cognizant. All rights reserved.</p></div>
+  </div>
+
+  <div class="right">
+    <div class="form-box">
+      <div class="accent-bar" style="background:var(--red)"></div>
+      <div class="success-card">
+        <div class="success-icon" style="background:#fef2f2;border-color:#fecaca">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <h2 class="page-title">Something went wrong</h2>
+        <p class="page-sub" style="text-align:center">
+          We encountered an error processing your request. This could be due to an expired session or invalid credentials.
+        </p>
+
+        <div class="alert error" style="text-align:left;margin-top:1rem">
+          <span class="alert-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span>
+          <span>Invalid username or password. Please try again.</span>
+        </div>
+
+        <button class="btn-primary" onclick="show('login');return false;" style="margin-top:0.5rem">
+          Try Again
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+
+<script>
+  /* ── Page switcher ─────────────────────────────────────── */
+  function show(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.switcher button').forEach(b => b.classList.remove('active'));
+    document.getElementById('s-' + id).classList.add('active');
+    const labels = {
+      'login':'Login','register':'Register','forgot':'Forgot Password',
+      'reset-sent':'Reset Email Sent','update-password':'Update Password',
+      'otp':'OTP / 2FA','verify-email':'Verify Email',
+      'select-auth':'Select Authenticator','error':'Error'
+    };
+    document.querySelectorAll('.switcher button').forEach(b => {
+      if (b.textContent.trim() === labels[id]) b.classList.add('active');
+    });
+  }
+
+  /* ── Password show/hide ────────────────────────────────── */
+  const eyeOn  = `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`;
+  const eyeOff = `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>`;
+
+  function togglePw(id, btn) {
+    const inp = document.getElementById(id);
+    const show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    btn.querySelector('svg').innerHTML = show ? eyeOff : eyeOn;
+  }
+
+  /* ── OTP box auto-advance ──────────────────────────────── */
+  function otpNext(el, idx) {
+    const boxes = document.querySelectorAll('#s-otp .otp-box');
+    if (el.value && idx < 5) boxes[idx + 1].focus();
+    if (el.key === 'Backspace' && !el.value && idx > 0) boxes[idx - 1].focus();
+  }
+
+  /* ── Password strength meter ───────────────────────────── */
+  function updateStrength(val) {
+    const segs  = [1,2,3,4].map(i => document.getElementById('s' + i));
+    const label = document.getElementById('s-label');
+    segs.forEach(s => { s.className = 'strength-seg'; });
+    if (!val) { label.textContent = ''; return; }
+    let score = 0;
+    if (val.length >= 8)  score++;
+    if (/[A-Z]/.test(val)) score++;
+    if (/[0-9]/.test(val)) score++;
+    if (/[^A-Za-z0-9]/.test(val)) score++;
+    const cls   = score <= 1 ? 'weak' : score <= 2 ? 'medium' : 'strong';
+    const names = ['', 'Weak', 'Fair', 'Good', 'Strong'];
+    for (let i = 0; i < score; i++) segs[i].classList.add(cls);
+    label.textContent = names[score] || '';
+    label.style.color = score <= 1 ? '#ef4444' : score <= 2 ? '#f59e0b' : '#22c55e';
+  }
+</script>
+
+</body>
+</html>

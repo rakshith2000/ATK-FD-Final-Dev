@@ -1,0 +1,68 @@
+@baseurl = https://cisicmpengineering1.service-now.com
+@accessToken = <>
+
+###
+GET {{baseurl}}/api/now/table/kb_knowledge?sysparm_query=number=KB0010378&sysparm_fields=sys_id,number
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+###
+GET {{baseurl}}/api/now/table/sys_db_object?sysparm_query=name=incident&sysparm_fields=super_class&sysparm_display_value=true
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+###
+GET {{baseurl}}/api/now/table/sys_dictionary?sysparm_query=nameINincident,task&sysparm_fields=element,column_label,internal_type,mandatory,reference,max_length,active&sysparm_limit=1000
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+###
+GET {{baseurl}}/api/now/table/incident/c4bd94b5fb597e10dd3ffa656eefdc27
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+###
+GET {{baseurl}}/api/now/table/sys_choice?sysparm_query=name=incident^element=state&sysparm_fields=label,value,sys_id
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+###
+GET {{baseurl}}/api/now/table/incident/c4bd94b5fb597e10dd3ffa656eefdc27
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+###
+GET {{baseurl}}/api/now/stats/sys_journal_field?sysparm_count=true&sysparm_group_by=element_id&sysparm_order_by=desc-count&sysparm_limit=5
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+###
+GET {{baseurl}}/api/now/table/sys_audit?sysparm_query=documentkey=7f7e9079fb597e10dd3ffa656eefdcd5^tablename=incident^fieldname=assigned_to^ORDERBYsys_created_on&sysparm_fields=oldvalue,newvalue,sys_created_by,sys_created_on&sysparm_display_value=true
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+###
+GET {{baseurl}}/api/now/table/sys_user_grmember?sysparm_fields=group&sysparm_display_value=all&sysparm_query=user%3D06d48877fb605610dd3ffa656eefdcf1
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+###
+GET {{baseurl}}/api/now/stats/incident?sysparm_count=true&sysparm_group_by=state&sysparm_query=priority=1&sysparm_display_value=all
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+
+###
+GET {{baseurl}}/api/now/table/user_criteria?sysparm_query=userLIKEd1b5ab66dbeed51027293313e29619ee&sysparm_fields=sys_id,name&sysparm_display_value=true
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+###
+GET {{baseurl}}/api/now/table/sys_choice?sysparm_query=name=task^element=state&sysparm_fields=label,value,sys_id
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+###
+GET {{baseurl}}/api/now/table/sys_db_object?sysparm_query=name=sc_req_item&sysparm_fields=name,label,super_class.name,super_class.label
+Authorization: Bearer {{accessToken}}
+Accept: application/json

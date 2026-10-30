@@ -1,0 +1,2 @@
+general_settings:
+  database_url: "postgresql://<DB-Username>:<DB-Password>@<DB Host>:<DB-Port>/<DB-Name>"

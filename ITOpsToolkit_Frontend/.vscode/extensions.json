@@ -1,0 +1,25 @@
+{
+    "recommendations": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "eamodio.gitlens",
+        "formulahendry.auto-rename-tag",
+        "coenraads.bracket-pair-colorizer-2",
+        "vitest.explorer",
+        "d-koppenhagen.file-tree-to-text-generator",
+        "Shinotatwu-DS.file-tree-generator",
+        "GitHub.copilot-chat",
+        "yzhang.markdown-all-in-one",
+        "yzane.markdown-pdf",
+        "shd101wyy.markdown-preview-enhanced",
+        "esbenp.prettier-vscode",
+        "ms-vscode-remote.remote-ssh",
+        "ms-vscode-remote.remote-ssh-edit",
+        "ms-vscode.remote-explorer",
+        "bradlc.vscode-tailwindcss",
+        "Gruntfuggly.todo-tree",
+        "vscode-icons-team.vscode-icons",
+        "Fuzionix.devtool-plus"
+    ]
+}

@@ -1,0 +1,2 @@
+general_settings:
+  database_url: "postgresql://postgres:StrongPassword123@172.31.41.104:5432/litellm"

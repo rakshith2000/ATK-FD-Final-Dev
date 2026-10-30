@@ -1,0 +1,12 @@
+Remove all the lines which are not needed(including this line). Only required key,value should be there.
+
+VAULT_URL=<Hashicorp Vault URL>
+ENGINE=secret
+VAULT_TOKEN=<Root Token>
+
+AZURE_CLIENT_ID=<>
+AZURE_CLIENT_SECRET=<>
+AZURE_TENANT_ID=<>
+KEY_VAULT_NAME=<>
+
+AWS_REGION=<>

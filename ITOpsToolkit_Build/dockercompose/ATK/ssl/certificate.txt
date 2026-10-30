@@ -1,0 +1,4 @@
+<SSL Certificate Notes>
+Place your fullchain.pem and privkey.pem in this directory.
+These are mounted into the nginx container at /etc/nginx/ssl/.
+Obtain certificates from your CA or Let's Encrypt for your <DNS Name> domain.

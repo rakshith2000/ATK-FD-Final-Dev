@@ -1,0 +1,5 @@
+google adk - GeneratorExit inside mcp.client.streamable_http.streamablehttp_client Followed by RuntimeError: Attempted to exit cancel scope in a different task than it was entered in
+ - https://github.com/google/adk-python/issues/2196
+ - https://github.com/modelcontextprotocol/python-sdk/issues/521
+ - https://github.com/google/adk-python/issues/2615
+# pipeline test trigger - safe to ignore

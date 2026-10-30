@@ -1,0 +1,41 @@
+services:
+  vault:
+    image: hashicorp/vault:latest
+    container_name: vault_server
+    user: root
+    environment:
+      VAULT_ADDR: "http://0.0.0.0:8200"   # https instead of http
+      VAULT_LOCAL_CONFIG: |
+        ui = true
+        listener "tcp" {
+          address       = "0.0.0.0:8200"
+          tls_disable   = 1                              # Enable TLS
+          tls_cert_file = "/vault/certs/fullchain.pem"  # Path inside container
+          tls_key_file  = "/vault/certs/privkey.pem"
+        }
+        storage "file" {
+          path = "/vault/data"
+        }
+
+    ports:
+      - "8200:8200"
+
+    volumes:
+      - /etc/vault-volume/vault_data:/vault/data
+      - /etc/vault-volume/vault_logs:/vault/logs
+      - /etc/vault-volume/vault_config:/vault/config
+      - /etc/certs:/vault/certs:ro  # Mount certs (read-only)
+
+    cap_add:
+      - IPC_LOCK
+
+    command: server
+    restart: unless-stopped
+
+volumes:
+  vault_data:
+    driver: local
+  vault_logs:
+    driver: local
+  vault_config:
+    driver: local

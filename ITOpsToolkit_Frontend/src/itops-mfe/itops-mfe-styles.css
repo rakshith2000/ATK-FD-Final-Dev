@@ -1,0 +1,43 @@
+/*
+ * MFE Shadow DOM styles.
+ *
+ * Reuses the host app's index.css (Tailwind, brand tokens, utilities)
+ * instead of duplicating it.  At runtime mountItopsMfeRoute.tsx:
+ *
+ *   1. Imports this file with ?inline  -> Vite inlines index.css + Tailwind
+ *   2. Strips @import url() rules     -> fonts are loaded in the light DOM
+ *   3. Replaces :root with :host      -> variables resolve inside shadow DOM
+ *   4. Hoists @property to document   -> Tailwind v4 initial values work globally
+ *   5. Applies via adoptedStyleSheets -> instant, no FOUC, HMR-friendly
+ *
+ * @font-face is loaded separately in the light DOM by injectFonts()
+ * because shadow DOM cannot load fonts.
+ */
+@import '../index.css';
+
+/* Shadow host  */
+
+:host {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* Render root reset  */
+
+#itops-mfe-render-root {
+    font-family: 'Cabin', sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    color: #323232;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    width: 100%;
+    height: 100%;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}

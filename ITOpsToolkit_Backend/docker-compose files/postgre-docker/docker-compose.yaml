@@ -1,0 +1,26 @@
+# Docker Compose for PostgreSQL with pgvector extension
+# Includes a named persistent volume to survive container restarts
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16   # Official pgvector image built on Postgres 16
+    container_name: postgres_pgvector
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}         # Default to 'admin' if env var not set
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret} # Override via .env file in production
+      POSTGRES_DB: ${POSTGRES_DB:-mydb}
+
+    ports:
+      - "5432:5432"   # Expose Postgres port to host
+
+    volumes:
+      - /etc/pgvector_data:/var/lib/postgresql/data   # Mount named volume for persistent storage
+      - ./init:/docker-entrypoint-initdb.d        # Optional: place .sql init scripts here
+
+    restart: unless-stopped   # Auto-restart unless manually stopped
+
+# Define the named volume — Docker manages the path on the host
+volumes:
+  pgvector_data:
+    driver: local   # Default local driver; data lives in Docker's volume directory

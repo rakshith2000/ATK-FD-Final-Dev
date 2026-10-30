@@ -1,0 +1,493 @@
+/* =========================================================
+   ATK Login Theme — Custom Styles
+   ========================================================= */
+
+/* ── Reset & Base ─────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+    --atk-navy:       #0d1b3e;
+    --atk-navy-mid:   #122050;
+    --atk-blue:       #1a56d6;
+    --atk-teal:       #29c6c6;
+    --atk-white:      #ffffff;
+    --atk-text-muted: rgba(255,255,255,0.60);
+    --atk-border:     #c8d3ea;
+    --atk-input-bg:   #f8faff;
+    --atk-radius:     8px;
+}
+
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+    background: var(--atk-white);
+}
+
+/* ── Full-page Split Layout ───────────────────────────── */
+.atk-login-page {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* ── Left Branding Panel ─────────────────────────────── */
+.atk-left-panel {
+    width: 42%;
+    min-height: 100vh;
+    background: linear-gradient(160deg, #091428 0%, #0d1b3e 55%, #122050 100%);
+    display: flex;
+    flex-direction: column;
+    padding: 1rem 1rem;
+    position: relative;
+    overflow: hidden;
+    color: var(--atk-white);
+}
+
+/* Subtle dot grid */
+.atk-left-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px);
+    background-size: 28px 28px;
+    pointer-events: none;
+}
+
+/* Everything above the footer gets pushed up, footer stays at bottom */
+.atk-left-top    { position: relative; z-index: 1; }
+.atk-left-body   { flex: 1; display: block; flex-direction: column; justify-content: center; position: relative; z-index: 1; padding-top: 50px; }
+.atk-left-footer { position: relative; z-index: 1; margin-top: 2rem; }
+
+/* Logo area */
+.atk-logo {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0;
+}
+
+/* Brand text */
+.atk-tagline {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--atk-teal);
+    margin: 0 0 0.85rem;
+}
+
+.atk-title {
+    font-size: 2.1rem;
+    font-weight: 800;
+    line-height: 1.2;
+    color: var(--atk-white);
+    margin: 0 0 0.9rem;
+}
+
+.atk-title-highlight {
+    color: var(--atk-teal);
+}
+
+.atk-bullets {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: rgba(255,255,255,0.80);
+    margin: 0 0 1rem;
+    letter-spacing: 0.02em;
+}
+
+.atk-description {
+    font-size: 0.82rem;
+    line-height: 1.7;
+    color: var(--atk-text-muted);
+    max-width: 360px;
+}
+
+.atk-left-footer p {
+    font-size: 0.72rem;
+    color: rgba(255,255,255,0.35);
+    margin: 0;
+}
+
+/* ── Right Form Panel ────────────────────────────────── */
+.atk-right-panel {
+    width: 58%;
+    min-height: 100vh;
+    background: var(--atk-white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem 1rem;
+}
+
+.atk-form-box {
+    width: 100%;
+    max-width: 420px;
+}
+
+/* Blue accent bar */
+.atk-accent-bar {
+    width: 44px;
+    height: 4px;
+    background: var(--atk-blue);
+    border-radius: 2px;
+    margin-bottom: 1.4rem;
+}
+
+.atk-welcome-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #111827;
+    margin: 0 0 1.8rem;
+}
+
+/* ── Override PatternFly form elements ───────────────── */
+
+/* Remove PF login wrapper chrome */
+.pf-v5-c-login,
+.pf-v5-c-login__container,
+.pf-v5-c-login__header,
+.pf-v5-c-login__main-header {
+    all: unset !important;
+    display: block !important;
+}
+
+.pf-v5-c-login__main {
+    all: unset !important;
+    display: block !important;
+}
+
+.pf-v5-c-login__main-body  { all: unset !important; display: block !important; }
+.pf-v5-c-login__main-footer { display: block !important; margin-top: 1rem !important; }
+.pf-v5-c-login__main-footer-band { display: block !important; padding: 0 !important; margin: 0 !important; }
+
+/* Form groups */
+.pf-v5-c-form__group {
+    margin-bottom: 0rem !important;
+}
+
+.pf-v5-c-form__group-label {
+    padding-bottom: 0.3rem !important;
+}
+
+.pf-v5-c-form__label {
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+    color: #374151 !important;
+    display: block !important;
+}
+
+.pf-v5-c-form__label-text { color: inherit !important; }
+
+/* Input wrapper */
+.pf-v5-c-form-control {
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    border: 1.5px solid var(--atk-border) !important;
+    border-radius: var(--atk-radius) !important;
+    background: var(--atk-input-bg) !important;
+    padding: 0 !important;
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+    /* remove PF pseudo-elements that draw borders */
+    --pf-v5-c-form-control--after--BorderBottomWidth: 0 !important;
+    --pf-v5-c-form-control--before--BorderWidth: 0 !important;
+}
+
+.pf-v5-c-form-control::before,
+.pf-v5-c-form-control::after { display: none !important; }
+
+.pf-v5-c-form-control:focus-within {
+    border-color: var(--atk-blue) !important;
+    box-shadow: 0 0 0 3px rgba(26,86,214,0.12) !important;
+}
+
+.pf-v5-c-form-control input {
+    flex: 1 !important;
+    border: none !important;
+    outline: none !important;
+    background: transparent !important;
+    padding: 0.68rem 0.85rem !important;
+    font-size: 0.88rem !important;
+    color: #1f2937 !important;
+    min-width: 0 !important;
+}
+
+.pf-v5-c-form-control input::placeholder { color: #9ca3af !important; }
+
+/* Input group (password row with toggle) */
+.pf-v5-c-input-group {
+    display: flex !important;
+    align-items: stretch !important;
+    border: 1.5px solid var(--atk-border) !important;
+    border-radius: var(--atk-radius) !important;
+    background: var(--atk-input-bg) !important;
+    overflow: hidden !important;
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+}
+
+.pf-v5-c-input-group:focus-within {
+    border-color: var(--atk-blue) !important;
+    box-shadow: 0 0 0 3px rgba(26,86,214,0.12) !important;
+}
+
+.pf-v5-c-input-group .pf-v5-c-form-control {
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.pf-v5-c-input-group__item { display: flex !important; align-items: center !important; }
+
+/* Password visibility toggle button */
+.pf-v5-c-button.pf-m-control {
+    background: transparent !important;
+    border: none !important;
+    border-left: 1px solid var(--atk-border) !important;
+    border-radius: 0 !important;
+    padding: 0 0.8rem !important;
+    cursor: pointer !important;
+    color: #6b7280 !important;
+    display: flex !important;
+    align-items: center !important;
+    height: 100% !important;
+}
+
+.pf-v5-c-button.pf-m-control:hover { color: var(--atk-blue) !important; }
+
+/* Forgot password helper text row */
+.pf-v5-c-helper-text {
+    display: flex !important;
+    justify-content: flex-end !important;
+    margin-top: 0.35rem !important;
+}
+
+.pf-v5-c-helper-text__item { list-style: none !important; }
+
+.pf-v5-c-helper-text__item-text a {
+    font-size: 0.82rem !important;
+    color: var(--atk-blue) !important;
+    text-decoration: none !important;
+    font-weight: 500 !important;
+}
+
+.pf-v5-c-helper-text__item-text a:hover { text-decoration: underline !important; }
+
+/* Hide error icon decorations that conflict with our border */
+.pf-v5-c-form-control__utilities,
+.pf-v5-c-form-control__icon { display: none !important; }
+
+/* Error state */
+.pf-v5-c-form-control.pf-m-error,
+.pf-v5-c-input-group:has(input[aria-invalid="true"]) {
+    border-color: #dc2626 !important;
+}
+
+.pf-v5-c-helper-text__item-text.pf-m-error.kc-feedback-text {
+    color: #dc2626 !important;
+    font-size: 0.78rem !important;
+}
+
+/* Form actions group */
+.pf-v5-c-form__actions {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0 !important;
+    padding: 0 !important;
+}
+
+/* ── Sign In Button ───────────────────────────────────── */
+.pf-v5-c-button.pf-m-primary.pf-m-block {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.5rem !important;
+    width: 96.5% !important;
+    padding: 0.8rem 1rem !important;
+    background: linear-gradient(135deg, var(--atk-blue) 0%, #1a3a8f 100%) !important;
+    color: var(--atk-white) !important;
+    font-size: 1rem !important;
+    font-weight: 600 !important;
+    border: none !important;
+    border-radius: var(--atk-radius) !important;
+    cursor: pointer !important;
+    letter-spacing: 0.02em !important;
+    transition: opacity 0.2s, transform 0.1s !important;
+    margin-top: 0.5rem !important;
+}
+
+/*.pf-v5-c-button.pf-m-primary.pf-m-block::after {
+    content: '→' !important;
+    font-size: 1.1rem !important;
+    position: absolute !important;
+    right: 1.2rem !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+}*/
+
+.pf-v5-c-button.pf-m-primary.pf-m-block:hover { opacity: 0.88 !important; }
+.pf-v5-c-button.pf-m-primary.pf-m-block:active { transform: scale(0.99) !important; }
+.pf-v5-c-button.pf-m-primary.pf-m-block:disabled { opacity: 0.6 !important; cursor: not-allowed !important; }
+
+/* ── "or" Divider ─────────────────────────────────────── */
+.atk-or-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 1.1rem 0;
+    color: #9ca3af;
+    font-size: 0.82rem;
+}
+
+.atk-or-divider::before,
+.atk-or-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #e5e7eb;
+}
+
+/* ── SSO / Secondary Buttons ─────────────────────────── */
+.pf-v5-c-button.pf-m-secondary.pf-m-block {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    /*width: 100% !important;*/
+    padding: 0.75rem 1rem !important;
+    background: var(--atk-white) !important;
+    color: var(--atk-navy) !important;
+    font-size: 0.95rem !important;
+    font-weight: 600 !important;
+    border: 1.5px solid var(--atk-border) !important;
+    border-radius: var(--atk-radius) !important;
+    cursor: pointer !important;
+    transition: background 0.2s !important;
+    text-decoration: none !important;
+}
+
+.pf-v5-c-button.pf-m-secondary.pf-m-block:hover { background: #f0f4ff !important; }
+
+/* Social providers section — single SSO button styling */
+#kc-social-providers {
+    margin-top: 0 !important;
+}
+
+#kc-social-providers ul {
+    list-style: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+#kc-social-providers li { margin-bottom: 0.5rem !important; }
+
+#kc-social-providers .pf-v5-c-button {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    padding: 0.75rem 1rem !important;
+    background: var(--atk-white) !important;
+    color: var(--atk-blue) !important;
+    font-size: 0.95rem !important;
+    font-weight: 600 !important;
+    border: -1.5px solid var(--atk-blue) !important;
+    border-radius: var(--atk-radius) !important;
+    cursor: pointer !important;
+    text-decoration: none !important;
+    transition: background 0.2s !important;
+}
+
+#kc-social-providers .pf-v5-c-button:hover { background: #f0f4ff !important; }
+
+#kc-social-providers svg {
+    height: 1.1rem !important;
+    margin-right: 0.5rem !important;
+    filter: none !important;
+}
+
+/* ── "New user? Register" info band ──────────────────── */
+#kc-registration-container { margin-top: 1.2rem !important; }
+
+#kc-registration {
+    font-size: 0.85rem !important;
+    color: #6b7280 !important;
+}
+
+#kc-registration a {
+    color: var(--atk-blue) !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+}
+
+#kc-registration a:hover { text-decoration: underline !important; }
+
+/* ── "For Support" info row ───────────────────────────── */
+#kc-support {
+    margin-top: 1.2rem !important;
+    font-size: 0.85rem !important;
+    color: #6b7280 !important;
+}
+ 
+#kc-support a {
+    color: var(--atk-blue) !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+}
+ 
+#kc-support a:hover { text-decoration: underline !important; }
+
+/* ── Alert messages ───────────────────────────────────── */
+.pf-v5-c-alert.pf-m-inline {
+    border-radius: var(--atk-radius) !important;
+    margin-bottom: 1rem !important;
+    font-size: 0.85rem !important;
+}
+
+/* ── Remember me checkbox ─────────────────────────────── */
+.pf-v5-c-check {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.4rem !important;
+}
+
+.pf-v5-c-check__input {
+    accent-color: var(--atk-blue) !important;
+}
+
+.pf-v5-c-check__label {
+    font-size: 0.83rem !important;
+    color: #374151 !important;
+}
+
+/* ── Responsive ───────────────────────────────────────── */
+@media (max-width: 768px) {
+    .atk-left-panel  { display: none; }
+    .atk-right-panel { width: 100%; padding: 1rem 1rem; }
+}
+
+/* ── Utility: hide PF page-level background ──────────── */
+.login-pf body { background: none !important; }
+
+/* Hide the old PF header completely (we render our own) */
+#kc-header { display: none !important; }
+
+/* ── PatternFly Override Fixes ───────────────────────── */
+html.login-pf, html.atk-login-pf {
+    height: 100%;
+    background: none !important;
+}
+
+html.login-pf body, html.atk-login-pf body {
+    background: var(--atk-white) !important;
+    display: block !important;
+}
+
+.atk-login-page {
+    display: flex !important;
+}
+
+/* ── Sign In Button Arrow Fix ─────────────────────────── */
+.pf-v5-c-button.pf-m-primary.pf-m-block::after {
+    margin-left: auto !important;
+}

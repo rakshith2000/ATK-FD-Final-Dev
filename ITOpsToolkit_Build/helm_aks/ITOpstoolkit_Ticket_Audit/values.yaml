@@ -1,0 +1,86 @@
+namespace: <kubernetes namespace for ATK>
+
+# Container Registry
+image:
+  registry: <registry name>
+  pullPolicy: Always
+  # ACR attached to AKS via: az aks update --attach-acr ticketaudit
+
+# Frontend
+frontend:
+  replicaCount: 1
+  image:
+    repository: <repository name for ticket audit frontend>
+    tag: <image tag tag>
+  service:
+    type: LoadBalancer
+    port: 8080
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Backend
+backend:
+  replicaCount: 1
+  image:
+    repository: <repository name for ticket audit backend>
+    tag: <image tag name>
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# Grafana
+grafana:
+  replicaCount: 1
+  image:
+    repository: <repository name for ticket audit grafana>
+    tag: <image tag name>
+  service:
+    type: LoadBalancer
+    port: 3000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  storage:
+    size: 5Gi
+
+# External PostgreSQL
+postgresql:
+  host: "<PGDB HOST>"
+  port: "5432"
+  database: "<PGDB DB Name>"
+
+# External Vault
+vault:
+  url: "<Hashicorp Vault URL>"
+  token: "<vault-token>"
+
+# ServiceNow
+servicenow:
+  url: "<SNOW URL>"
+  tag: "<SNOW secret name in the Vault>"
+
+# LLM
+llm:
+  model: "<LLM name>"
+  baseUrl: "<LLM bse URL>"
+  apiType: "<LLM API type>"
+  apiVersion: "LLM API version"
+
+# General
+general:
+  apiVersion: "v1"
+  vectorDim: "768"
+  customerName: "<customer name>"

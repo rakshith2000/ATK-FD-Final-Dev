@@ -1,0 +1,12 @@
+Analyze the provided data and extract all the information required from the data. For each preventive action, create a dictionary with the following structure:
+
+    short_description: The title of the preventive action.
+    description: A detailed explanation of the preventive action.
+    cmdb_ci: The configuration item (CI) associated with the action.
+    due_date: Estimate the time required to complete the action in minutes. Ensure that any business-impacting activities are scheduled for weekends. Use the datetime.now() function from the Python datetime package to get the current time. Calculate the due date in terms of minutes from the current time and put it back in the terms of minutes only.
+    work_notes: The associated known error with detailed information about the known error, if any. If no relevant known error is found, leave this field as an empty string.
+    assignment_group: From the given list of assignment groups, select the most relevant group as the assignment group based on the provided context.
+    justification : justification for due_date's value.
+    
+
+Return the output as a list of dictionaries in the following JSON object without any comments.

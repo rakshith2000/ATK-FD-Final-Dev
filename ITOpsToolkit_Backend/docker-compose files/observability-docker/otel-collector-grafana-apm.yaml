@@ -1,0 +1,48 @@
+
+receivers:
+  # Bind to non-conflicting ports so we don't collide with grafana/otel-lgtm
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"   # your collector's gRPC receiver
+      http:
+        endpoint: "0.0.0.0:4318"   # your collector's HTTP receiver
+
+processors:
+  batch: {}
+
+exporters:
+  # ---- Single OTLP exporter to forward everything to grafana/otel-lgtm ----
+  # Prefer gRPC (4317). For HTTP, use another exporter block pointing to 4318.
+  otlp/to-otel-lgtm:
+    endpoint: "15.168.48.67:5327"   # OTLP gRPC exposed by grafana/otel-lgtm
+    # If you enable TLS, configure tls: instead of insecure:
+    tls:
+      insecure: true
+
+  # (Optional) If you must use OTLP/HTTP instead of gRPC, uncomment:
+  # otlphttp/to-otel-lgtm:
+  #   endpoint: "http://localhost:4318"
+  #   headers:
+  #     # add any auth headers if required
+  #     # Authorization: Bearer XYZ
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/to-otel-lgtm]
+      # exporters: [otlphttp/to-otel-lgtm]  # if using HTTP instead
+
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/to-otel-lgtm]
+      # exporters: [otlphttp/to-otel-lgtm]  # if using HTTP instead
+
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/to-otel-lgtm]
+      # exporters: [otlphttp/to-otel-lgtm]  # if using HTTP instead

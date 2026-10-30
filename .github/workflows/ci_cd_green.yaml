@@ -1,0 +1,705 @@
+name: ci-cd-green
+
+on:
+  pull_request:
+    branches:
+      - green
+    types:
+      - closed
+  workflow_dispatch:
+    inputs:
+      components:
+        description: 'Components to deploy (comma-separated: backend,frontend,frontend_tutorial,tutorial_video_backend,keycloak,litellm,grafana,rabbitmq,nginx,agentgateway_engine,agentgateway_ui,fasteai_core,fasteai_backend,fasteai_mcp,fasteai_task_runner)'
+        required: false
+        default: ''
+      image_tag:
+        description: 'Existing image tag to redeploy without rebuilding (leave blank to build new)'
+        required: false
+        default: ''
+      keep_count:
+        description: 'Number of recent image tags to keep per component in JFrog (default: 5)'
+        required: false
+        default: '5'
+      seed_video:
+        description: 'Seed tutorial video into PVC during deploy (true/false, default: false)'
+        required: false
+        default: 'false'
+
+env:
+  JFROG_REGISTRY: 'atkcontainerhub.jfrog.io'
+  JFROG_REPO:     'atk-green/images'
+  RELEASE_NUMBER: '2.2.0'
+  AWS_REGION:     'ap-south-1'
+  CLUSTER_NAME:   'ATK-Demo-Cluster'
+  NAMESPACE:      'green'
+  HELM_BASE_PATH: './build-configs/ITOpsToolkit_Build/green_Build/helm_eks'
+
+  # Set to 'true' to build and deploy that component, 'false' to skip.
+  # Update these flags in your PR before merging.
+  BUILD_KEYCLOAK:            'true'
+  BUILD_LITELLM:             'true'
+  BUILD_BACKEND:             'true'
+  BUILD_FRONTEND:            'true'
+  BUILD_FRONTEND_TUTORIAL:   'true'
+  BUILD_GRAFANA:             'true'
+  BUILD_RABBITMQ:            'false'
+  #BUILD_NGINX:               'false'
+  BUILD_FASTEAI_CORE:        'false'
+  BUILD_FASTEAI_BACKEND:     'false'
+  BUILD_FASTEAI_MCP:         'false'
+  BUILD_FASTEAI_TASK_RUNNER: 'false'
+  BUILD_AGENTGATEWAY_ENGINE: 'true'
+  BUILD_AGENTGATEWAY_UI:     'true'
+
+jobs:
+  ### ── JOB 1: SETUP MATRIX ────────────────────────────────────────────────────
+  # Resolves build flags, determines active components, and constructs parallel matrices for CI & CD.
+  setup-matrix:
+    name: Setup Build and Deploy Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      branch_pr_tag: ${{ steps.set_tag.outputs.branch_pr_tag }}
+      build_flags:   ${{ steps.detect.outputs.build_flags }}
+      ci_matrix:     ${{ steps.detect.outputs.ci_matrix }}
+      cd_matrix:     ${{ steps.detect.outputs.cd_matrix }}
+      has_builds:    ${{ steps.detect.outputs.has_builds }}
+      has_deploys:   ${{ steps.detect.outputs.has_deploys }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set IMAGE_TAG
+        id: set_tag
+        run: |
+          echo "::group::Resolving Image Tag"
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ -n "${{ inputs.image_tag }}" ]; then
+            BRANCH_PR_TAG="${{ inputs.image_tag }}"
+            echo "[INFO] Using manually specified existing tag: $BRANCH_PR_TAG"
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            BRANCH_PR_TAG="manual_${{ github.run_number }}_${{ env.RELEASE_NUMBER }}"
+            echo "[INFO] Generated manual dispatch tag: $BRANCH_PR_TAG"
+          else
+            BRANCH_PR_TAG="${{ env.RELEASE_NUMBER }}_${{ github.event.pull_request.number }}"
+            echo "[INFO] Generated PR merge tag: $BRANCH_PR_TAG"
+          fi
+          echo "BRANCH_PR_TAG=$BRANCH_PR_TAG" >> $GITHUB_ENV
+          echo "branch_pr_tag=$BRANCH_PR_TAG"  >> $GITHUB_OUTPUT
+          echo "[INFO] Active Image Tag: $BRANCH_PR_TAG"
+          echo "::endgroup::"
+
+      - name: Resolve build flags and dynamic matrices
+        id: detect
+        run: |
+          echo "::group::Analyzing Component Registry and Generating Matrix"
+          REGISTRY=$(cat .github/component-registry-green.json)
+          COUNT=$(echo "$REGISTRY" | jq length)
+          BUILD_FLAGS_JSON="{}"
+          CI_MATRIX_JSON="[]"
+          CD_MATRIX_JSON="[]"
+          INPUT="${{ inputs.components }}"
+
+          echo "[INFO] Processing $COUNT registered components..."
+
+          for i in $(seq 0 $((COUNT - 1))); do
+            ITEM=$(echo "$REGISTRY" | jq ".[$i]")
+            NAME=$(echo "$ITEM" | jq -r ".name")
+            FLAG="BUILD_$(echo "$NAME" | tr '[:lower:]' '[:upper:]')"
+
+            if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+              if [ -n "$INPUT" ]; then
+                if echo ",$INPUT," | grep -q ",${NAME}," || { [ "$NAME" = "frontend_tutorial" ] && echo ",$INPUT," | grep -q ",tutorial_video_backend,"; }; then
+                  VAL="true"
+                else
+                  VAL="false"
+                fi
+              else
+                VAL=$(eval echo "\$$FLAG")
+                if [ "$VAL" != "true" ]; then VAL="false"; fi
+              fi
+            else
+              VAL=$(eval echo "\$$FLAG")
+              if [ "$VAL" != "true" ]; then VAL="false"; fi
+            fi
+
+            echo "${FLAG}=${VAL}" >> $GITHUB_ENV
+            BUILD_FLAGS_JSON=$(echo "$BUILD_FLAGS_JSON" | jq ". + {\"${NAME}\": \"${VAL}\"}")
+
+            if [ "$VAL" == "true" ]; then
+              # CI build matrix entry
+              SRC=$(echo "$ITEM" | jq -r ".src_path // empty")
+              if [ -n "$SRC" ] && [ -d "$SRC" ]; then
+                CI_ENTRY=$(echo "$ITEM" | jq '{name: .name, image: .image, src_path: .src_path}')
+                CI_MATRIX_JSON=$(echo "$CI_MATRIX_JSON" | jq ". + [$CI_ENTRY]")
+                echo "  [CI BUILD]  Included: $NAME ($SRC)"
+              fi
+
+              # CD deploy matrix entry
+              STRATEGY=$(echo "$ITEM" | jq -r ".deploy_strategy // empty")
+              if [ -n "$STRATEGY" ] && [ "$STRATEGY" != "none" ]; then
+                CD_ENTRY=$(echo "$ITEM" | jq '{name: .name, image: .image, helm_path: .helm_path, helm_release: .helm_release, deploy_script: .deploy_script, deploy_strategy: .deploy_strategy, k8s_deployment: .k8s_deployment, k8s_label: .k8s_label, scale_down: .scale_down, rollout_timeout: (.rollout_timeout // "5m")}')
+                CD_MATRIX_JSON=$(echo "$CD_MATRIX_JSON" | jq ". + [$CD_ENTRY]")
+                echo "  [CD DEPLOY] Included: $NAME (Strategy: $STRATEGY)"
+              fi
+            else
+              echo "  [SKIPPED]   $NAME"
+            fi
+          done
+
+          CI_COUNT=$(echo "$CI_MATRIX_JSON" | jq length)
+          CD_COUNT=$(echo "$CD_MATRIX_JSON" | jq length)
+
+          HAS_BUILDS=$([ $CI_COUNT -gt 0 ] && echo "true" || echo "false")
+          HAS_DEPLOYS=$([ $CD_COUNT -gt 0 ] && echo "true" || echo "false")
+
+          # Fallback dummy elements to guarantee valid JSON schema for fromJson() if empty
+          if [ $CI_COUNT -eq 0 ]; then
+            CI_MATRIX_JSON='[{"name":"none","image":"none","src_path":"."}]'
+          fi
+          if [ $CD_COUNT -eq 0 ]; then
+            CD_MATRIX_JSON='[{"name":"none","image":"none","helm_path":".","helm_release":"none","deploy_script":"","deploy_strategy":"none","k8s_deployment":"none","k8s_label":"none","scale_down":false,"rollout_timeout":"5m"}]'
+          fi
+
+          # Compact JSON to single-line to avoid GITHUB_OUTPUT newline errors
+          CI_MATRIX_COMPACT=$(echo "$CI_MATRIX_JSON" | jq -c .)
+          CD_MATRIX_COMPACT=$(echo "$CD_MATRIX_JSON" | jq -c .)
+
+          echo "build_flags=$(echo "$BUILD_FLAGS_JSON" | jq -c .)" >> $GITHUB_OUTPUT
+          echo "ci_matrix={\"include\":$CI_MATRIX_COMPACT}" >> $GITHUB_OUTPUT
+          echo "cd_matrix={\"include\":$CD_MATRIX_COMPACT}" >> $GITHUB_OUTPUT
+          echo "has_builds=$HAS_BUILDS" >> $GITHUB_OUTPUT
+          echo "has_deploys=$HAS_DEPLOYS" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+
+          echo ""
+          echo "================================================================================"
+          echo "                        CI/CD GREEN MATRIX SUMMARY                              "
+          echo "================================================================================"
+          echo "  Trigger Event   : ${{ github.event_name }}"
+          echo "  Target Branch   : ${{ github.base_ref || github.ref_name }}"
+          echo "  Image Tag       : ${{ env.BRANCH_PR_TAG }}"
+          echo "  JFrog Repo      : ${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}"
+          echo "  K8s Namespace   : ${{ env.NAMESPACE }}"
+          echo "  Total CI Builds : $CI_COUNT"
+          echo "  Total CD Deploys: $CD_COUNT"
+          echo "================================================================================"
+
+  ## ── JOB 2: PARALLEL CI (BUILD & PUSH MATRIX) ──────────────────────────────
+  build-and-push:
+    name: Build [${{ matrix.name }}]
+    runs-on: ubuntu-latest
+    needs: setup-matrix
+    if: needs.setup-matrix.outputs.has_builds == 'true' && (github.event_name != 'workflow_dispatch' || inputs.image_tag == '')
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJson(needs.setup-matrix.outputs.ci_matrix) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          echo "::group::Cleaning Disk Space"
+          sudo apt-get clean
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          docker system prune -af --volumes || true
+          docker builder prune -af || true
+          df -h | grep -E '^Filesystem|/dev/'
+          echo "::endgroup::"
+
+      - name: Login to JFrog Artifactory
+        run: |
+          echo "::group::Docker Login to JFrog"
+          echo "${{ secrets.JFROG_PASSWORD }}" | docker login ${{ env.JFROG_REGISTRY }} -u ${{ secrets.JFROG_USER }} --password-stdin
+          echo "[INFO] Successfully logged in to ${{ env.JFROG_REGISTRY }}"
+          echo "::endgroup::"
+
+      - name: Build and Push ${{ matrix.name }} Docker image
+        run: |
+          TAG="${{ needs.setup-matrix.outputs.branch_pr_tag }}"
+          IMG="${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}/${{ matrix.image }}:${{ matrix.image }}_${TAG}"
+          
+          echo "::group::Building Docker Image: $IMG"
+          echo "[INFO] Build Context: ${{ matrix.src_path }}"
+          START_TIME=$(date +%s)
+          docker build --no-cache --pull -t "$IMG" "${{ matrix.src_path }}"
+          BUILD_TIME=$(( $(date +%s) - START_TIME ))
+          echo "[SUCCESS] Build completed in ${BUILD_TIME}s"
+          echo "::endgroup::"
+
+          echo "::group::Pushing Docker Image to JFrog"
+          START_TIME=$(date +%s)
+          docker push "$IMG"
+          PUSH_TIME=$(( $(date +%s) - START_TIME ))
+          echo "[SUCCESS] Pushed $IMG in ${PUSH_TIME}s"
+          docker rmi "$IMG"
+          echo "::endgroup::"
+
+          echo "[SUCCESS] Finished build and push for ${{ matrix.name }} -> $IMG"
+
+  ## ── JOB 3: PRE-DEPLOY SETUP (CONFIGMAPS & INFRA) ───────────────────────────
+  pre-deploy-setup:
+    name: Pre-Deploy Cluster and ConfigMaps Setup
+    runs-on: ubuntu-latest
+    needs: [setup-matrix, build-and-push]
+    if: |
+      always() &&
+      (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') &&
+      needs.setup-matrix.outputs.has_deploys == 'true' &&
+      (github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout Build Branch (Helm Charts)
+        uses: actions/checkout@v4
+        with:
+          repository: CognizantCodeHub/IPR001380_MAF
+          ref: build
+          path: build-configs
+          fetch-depth: 1
+
+      - name: Verify Green Build Charts Structure
+        run: |
+          echo "::group::Inspecting Green Helm Charts"
+          ls -la ${{ env.HELM_BASE_PATH }}
+          echo "::endgroup::"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token:     ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Connect to EKS Cluster
+        run: |
+          echo "::group::Updating Kubeconfig"
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.CLUSTER_NAME }}
+          echo "[INFO] Connected to cluster: ${{ env.CLUSTER_NAME }}"
+          kubectl cluster-info
+          echo "::endgroup::"
+
+      - name: Setup Namespace and JFrog Pull Secret
+        run: |
+          echo "::group::Configuring Namespace and Image Pull Secret"
+          echo "Ensuring namespace '${{ env.NAMESPACE }}' exists..."
+          kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+
+          echo "Creating / updating 'jfrog-pull-secret'..."
+          kubectl create secret docker-registry jfrog-pull-secret \
+            --docker-server=${{ env.JFROG_REGISTRY }} \
+            --docker-username=${{ secrets.JFROG_USER }} \
+            --docker-password=${{ secrets.JFROG_PASSWORD }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          echo "Patching default serviceaccount..."
+          kubectl patch serviceaccount default \
+            --namespace ${{ env.NAMESPACE }} \
+            -p '{"imagePullSecrets": [{"name": "jfrog-pull-secret"}]}'
+          echo "[SUCCESS] Namespace and secrets configured successfully"
+          echo "::endgroup::"
+
+      - name: Pre-deploy — LiteLLM ConfigMaps
+        run: |
+          echo "::group::Configuring LiteLLM ConfigMaps"
+          if [ -d "${{ env.HELM_BASE_PATH }}/ITOpstoolkit_LiteLLM/hotfix" ]; then
+            cd ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_LiteLLM/hotfix
+            echo "${{ env.NAMESPACE }}" | bash create_configmap_with_files.sh
+            echo "[SUCCESS] LiteLLM ConfigMaps applied"
+          else
+            echo "[INFO] LiteLLM hotfix folder not found, skipping"
+          fi
+          echo "::endgroup::"
+
+      - name: Pre-deploy — Backend ConfigMaps (Vault Token Injection)
+        run: |
+          echo "::group::Configuring Backend ConfigMaps and Injecting Vault Token"
+          if [ -d "${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Backend/hotfix" ]; then
+            VAULT_TOK="${{ secrets.VAULT_TOKEN_GREEN || secrets.VAULT_TOKEN_RELEASE || secrets.VAULT_TOKEN_INTEGRATION }}"
+            if [ -n "$VAULT_TOK" ]; then
+              echo "[INFO] Injected Vault Token from GitHub Secrets"
+            else
+              echo "[WARN] Vault token secret is empty!"
+            fi
+            [ -f ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Backend/hotfix/vault_env ] && \
+              sed -i "s/VAULT_TOKEN_PLACEHOLDER/$VAULT_TOK/" \
+                ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Backend/hotfix/vault_env
+            cd ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Backend/hotfix
+            echo "${{ env.NAMESPACE }}" | bash create_configmap_with_files.sh
+            echo "[SUCCESS] Backend ConfigMaps applied"
+          else
+            echo "[INFO] Backend hotfix folder not found, skipping"
+          fi
+          echo "::endgroup::"
+
+      - name: Pre-deploy — Frontend ConfigMaps
+        run: |
+          echo "::group::Configuring Frontend ConfigMaps"
+          if [ -d "${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Frontend/hotfix" ]; then
+            cd ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Frontend/hotfix
+            echo "${{ env.NAMESPACE }}" | bash create_configmap_with_files.sh
+            echo "[SUCCESS] Frontend ConfigMaps applied"
+          else
+            echo "[INFO] Frontend hotfix folder not found, skipping"
+          fi
+          echo "::endgroup::"
+
+      - name: Pre-deploy — Grafana ConfigMaps
+        run: |
+          echo "::group::Configuring Grafana ConfigMaps"
+          if [ -d "${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Grafana/hotfix" ]; then
+            cd ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Grafana/hotfix
+            echo "${{ env.NAMESPACE }}" | bash create_configmap_with_files.sh
+            echo "[SUCCESS] Grafana ConfigMaps applied"
+          else
+            echo "[INFO] Grafana hotfix folder not found, skipping"
+          fi
+          echo "::endgroup::"
+
+      - name: Pre-deploy — Agent Gateway ConfigMaps
+        run: |
+          echo "::group::Configuring Agent Gateway ConfigMaps"
+          if [ -d "${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Agent_Gateway_Engine/hotfix" ]; then
+            cd ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Agent_Gateway_Engine/hotfix
+            echo "${{ env.NAMESPACE }}" | bash create_configmap_with_files.sh
+            echo "[SUCCESS] Agent Gateway ConfigMaps applied"
+          else
+            echo "[INFO] Agent Gateway hotfix folder not found, skipping"
+          fi
+          echo "::endgroup::"
+
+  ## ── JOB 4: PARALLEL CD (DEPLOY MATRIX) ─────────────────────────────────────
+  deploy-matrix:
+    name: Deploy [${{ matrix.name }}]
+    runs-on: ubuntu-latest
+    needs: [setup-matrix, pre-deploy-setup]
+    if: needs.pre-deploy-setup.result == 'success'
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJson(needs.setup-matrix.outputs.cd_matrix) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout Build Branch (Helm Charts)
+        uses: actions/checkout@v4
+        with:
+          repository: CognizantCodeHub/IPR001380_MAF
+          ref: build
+          path: build-configs
+          fetch-depth: 1
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token:     ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Connect to EKS Cluster
+        run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.CLUSTER_NAME }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'latest'
+
+      - name: Deploy ${{ matrix.name }} to Kubernetes
+        run: |
+          NAME="${{ matrix.name }}"
+          IMAGE="${{ matrix.image }}"
+          HELM_PATH="${{ matrix.helm_path }}"
+          HELM_REL="${{ matrix.helm_release }}"
+          DEPLOY_SH="${{ matrix.deploy_script }}"
+          STRATEGY="${{ matrix.deploy_strategy }}"
+          DEPLOYMENT="${{ matrix.k8s_deployment }}"
+          LABEL="${{ matrix.k8s_label }}"
+          SCALE="${{ matrix.scale_down }}"
+          TAG="${{ needs.setup-matrix.outputs.branch_pr_tag }}"
+          NS="${{ env.NAMESPACE }}"
+          REG="${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}"
+          IMG="${REG}/${IMAGE}:${IMAGE}_${TAG}"
+
+          echo "================================================================================"
+          echo "  Deploying Component : $NAME"
+          echo "  Target Docker Image : $IMG"
+          echo "  Helm Chart Path     : $HELM_PATH"
+          echo "  Deploy Strategy     : $STRATEGY"
+          echo "  Namespace           : $NS"
+          echo "================================================================================"
+
+          if [ "$SCALE" == "true" ] && [ -n "$DEPLOYMENT" ] && [ "$DEPLOYMENT" != "null" ]; then
+            echo "::group::Scaling down existing deployment: $DEPLOYMENT"
+            echo "Scaling deployment to 0 replicas..."
+            kubectl scale deployment "$DEPLOYMENT" --replicas=0 -n "$NS" || true
+            echo "Waiting for existing pods to terminate..."
+            kubectl wait pod -l "app.kubernetes.io/name=${LABEL}" \
+              --for=delete -n "$NS" --timeout=120s || true
+            kubectl delete pod -l "app.kubernetes.io/name=${LABEL}" \
+              -n "$NS" --force --grace-period=0 || true
+            echo "::endgroup::"
+          fi
+
+          echo "::group::Executing Deployment ($STRATEGY)"
+          case "$STRATEGY" in
+            atomic)
+              echo "Running Helm upgrade (atomic, timeout: 15m)..."
+              helm upgrade --install "$HELM_REL" "$HELM_PATH" \
+                --namespace "$NS" \
+                --set image.tag="${IMAGE}_${TAG}" \
+                --timeout 15m
+              ;;
+            no_wait)
+              echo "Running Helm upgrade (no-wait mode)..."
+              helm upgrade --install "$HELM_REL" "$HELM_PATH" \
+                --namespace "$NS" \
+                --set image.tag="${IMAGE}_${TAG}" \
+                --wait=false
+              ;;
+            script)
+              if [ -z "$DEPLOY_SH" ] || [ "$DEPLOY_SH" == "null" ] || [ ! -f "${HELM_PATH}/${DEPLOY_SH}" ]; then
+                echo "[INFO] No custom deploy script found — executing standard helm upgrade"
+                helm upgrade --install "$HELM_REL" "$HELM_PATH" \
+                  --namespace "$NS" \
+                  --set image.tag="${IMAGE}_${TAG}" \
+                  --timeout 10m
+              else
+                echo "Executing custom script: ${HELM_PATH}/${DEPLOY_SH}"
+                (cd "$HELM_PATH" && NAMESPACE="$NS" IMAGE_TAG="${IMAGE}_${TAG}" SEED_VIDEO="${{ inputs.seed_video || 'false' }}" bash "$DEPLOY_SH")
+              fi
+              ;;
+            *)
+              echo "[WARN] Unknown deploy_strategy '$STRATEGY' for $NAME — skipping"
+              ;;
+          esac
+          echo "::endgroup::"
+
+      - name: Verify Rollout Status for ${{ matrix.name }}
+        run: |
+          DEPLOYMENT="${{ matrix.k8s_deployment }}"
+          TIMEOUT="${{ matrix.rollout_timeout }}"
+          if [ -n "$DEPLOYMENT" ] && [ "$DEPLOYMENT" != "null" ]; then
+            echo "::group::Rollout Status: deployment/$DEPLOYMENT"
+            echo "Checking deployment rollout (timeout: $TIMEOUT)..."
+            kubectl rollout status "deployment/${DEPLOYMENT}" \
+              -n ${{ env.NAMESPACE }} --timeout="${TIMEOUT}"
+            echo "[SUCCESS] Rollout completed successfully!"
+            echo "::endgroup::"
+          fi
+
+      - name: Diagnostics on Failure for ${{ matrix.name }}
+        if: failure()
+        run: |
+          NS=${{ env.NAMESPACE }}
+          DEPLOYMENT="${{ matrix.k8s_deployment }}"
+          LABEL="${{ matrix.k8s_label }}"
+
+          echo "::group::[FAILURE DIAGNOSTICS] Deployment and Pod Logs for ${{ matrix.name }}"
+          echo "================================================================================"
+          echo "  Deployment Description"
+          echo "================================================================================"
+          if [ -n "$DEPLOYMENT" ] && [ "$DEPLOYMENT" != "null" ]; then
+            kubectl -n "$NS" describe deployment "$DEPLOYMENT" || true
+          fi
+          
+          if [ -n "$LABEL" ] && [ "$LABEL" != "null" ]; then
+            echo "================================================================================"
+            echo "  Matching Pods"
+            echo "================================================================================"
+            kubectl -n "$NS" get pods -l "app.kubernetes.io/name=${LABEL}" -o wide || true
+
+            echo "================================================================================"
+            echo "  Pod Description"
+            echo "================================================================================"
+            kubectl -n "$NS" describe pod -l "app.kubernetes.io/name=${LABEL}" || true
+
+            echo "================================================================================"
+            echo "  Container Logs (Last 300 Lines)"
+            echo "================================================================================"
+            kubectl -n "$NS" logs -l "app.kubernetes.io/name=${LABEL}" --all-containers=true --tail=300 --prefix=true || true
+          fi
+          echo "::endgroup::"
+
+  ## ── JOB 5: VERIFY & SUMMARY ────────────────────────────────────────────────
+  verify-and-summary:
+    name: Cluster Health and Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [setup-matrix, deploy-matrix]
+    if: always() && needs.setup-matrix.outputs.has_deploys == 'true'
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token:     ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Connect to EKS Cluster
+        run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.CLUSTER_NAME }}
+
+      - name: Cluster Health and Resource Status
+        run: |
+          NS=${{ env.NAMESPACE }}
+          echo "::group::Kubernetes Resources in Namespace: $NS"
+          echo "--------------------------------------------------------------------------------"
+          echo "  ALL PODS"
+          echo "--------------------------------------------------------------------------------"
+          kubectl get pods -n "$NS" -o wide
+          echo ""
+          echo "--------------------------------------------------------------------------------"
+          echo "  SERVICES"
+          echo "--------------------------------------------------------------------------------"
+          kubectl get services -n "$NS"
+          echo ""
+          echo "--------------------------------------------------------------------------------"
+          echo "  INGRESS"
+          echo "--------------------------------------------------------------------------------"
+          kubectl get ingress -n "$NS"
+          echo "::endgroup::"
+
+      - name: Generate GitHub Actions Step Summary
+        run: |
+          cat << 'EOF' >> $GITHUB_STEP_SUMMARY
+          # Green Environment Deployment Summary
+
+          | Property | Value |
+          |:---|:---|
+          | **Image Tag** | \`${{ needs.setup-matrix.outputs.branch_pr_tag }}\` |
+          | **JFrog Repository** | \`${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}\` |
+          | **Kubernetes Cluster** | \`${{ env.CLUSTER_NAME }}\` (\`${{ env.AWS_REGION }}\`) |
+          | **Namespace** | \`${{ env.NAMESPACE }}\` |
+          | **Deploy Matrix Result** | \`${{ needs.deploy-matrix.result }}\` |
+
+          ### Component Build and Deployment Status
+
+          | Component | CI (Docker Build) | CD (Kubernetes Deploy) |
+          |:---|:---:|:---:|
+          EOF
+          
+          echo '${{ needs.setup-matrix.outputs.build_flags }}' | jq -r 'to_entries[] | "| **" + .key + "** | " + (if .value == "true" then "Included" else "Skipped" end) + " | " + (if .value == "true" then "Deployed" else "—" end) + " |"' >> $GITHUB_STEP_SUMMARY
+
+  ## ── JOB 6: CLEANUP OLD JFROG IMAGES ─────────────────────────────────────────
+  # Retains only the latest image tags per component in JFrog Artifactory.
+  cleanup-jfrog-green-images:
+    name: JFrog Artifactory Image Retention Cleanup
+    runs-on: ubuntu-latest
+    needs: [setup-matrix, deploy-matrix, verify-and-summary]
+    if: |
+      always() &&
+      (needs.deploy-matrix.result == 'success' || needs.verify-and-summary.result == 'success') &&
+      !(github.event_name == 'workflow_dispatch' && inputs.image_tag != '')
+
+    env:
+      JFROG_URL: "https://atkcontainerhub.jfrog.io"
+      JFROG_REPO: "atk-green"
+      KEEP_LAST: "${{ github.event_name == 'workflow_dispatch' && inputs.keep_count || '5' }}"
+      DRY_RUN: "false"
+      JFROG_USER: "${{ secrets.JFROG_USER }}"
+      JFROG_PASSWORD: "${{ secrets.JFROG_PASSWORD }}"
+
+    steps:
+      - name: Cleanup old Docker image tags from JFrog
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${JFROG_USER}" ] || [ -z "${JFROG_PASSWORD}" ]; then
+            echo "[ERROR] JFROG_USER or JFROG_PASSWORD secret is missing"
+            exit 1
+          fi
+
+          echo "================================================================================"
+          echo "  JFrog URL   : ${JFROG_URL}"
+          echo "  Repository  : ${JFROG_REPO}"
+          echo "  Retain Last : ${KEEP_LAST} tags per image"
+          echo "  Dry Run     : ${DRY_RUN}"
+          echo "================================================================================"
+
+          IMAGES=(
+            "frontend"
+            "backend"
+            "keycloak"
+            "litellm"
+            "grafana"
+            "nginx"
+            "rabbitmq"
+            "fasteai_core"
+            "fasteai_backend"
+            "fasteai_mcp"
+            "fasteai_task_runner"
+            "agentgateway_ui"
+            "agentgateway_engine"
+            "frontend_tutorial"
+          )
+
+          for IMAGE_NAME in "${IMAGES[@]}"; do
+            IMAGE_PATH="images/${IMAGE_NAME}"
+            echo "::group::Image Retention Check: ${JFROG_REPO}/${IMAGE_PATH}"
+
+            TAGS_RESPONSE=$(curl -sS \
+              -u "${JFROG_USER}:${JFROG_PASSWORD}" \
+              "${JFROG_URL}/artifactory/api/docker/${JFROG_REPO}/v2/${IMAGE_PATH}/tags/list" || true)
+
+            if ! echo "${TAGS_RESPONSE}" | jq . >/dev/null 2>&1; then
+              echo "[WARN] Non-JSON response for ${IMAGE_PATH}, skipping: ${TAGS_RESPONSE}"
+              echo "::endgroup::"
+              continue
+            fi
+
+            TAGS=$(echo "${TAGS_RESPONSE}" | jq -r '.tags[]?' | sort -V || true)
+
+            if [ -z "${TAGS}" ]; then
+              echo "[INFO] No tags found for ${IMAGE_PATH}"
+              echo "::endgroup::"
+              continue
+            fi
+
+            TAG_COUNT=$(echo "${TAGS}" | wc -l | xargs)
+            echo "[INFO] Total tags found: ${TAG_COUNT}"
+
+            if [ "${TAG_COUNT}" -le "${KEEP_LAST}" ]; then
+              echo "[INFO] No cleanup needed (${TAG_COUNT} <= ${KEEP_LAST})"
+              echo "::endgroup::"
+              continue
+            fi
+
+            DELETE_COUNT=$((TAG_COUNT - KEEP_LAST))
+            DELETE_TAGS=$(echo "${TAGS}" | head -n "${DELETE_COUNT}")
+
+            echo "[INFO] Deleting ${DELETE_COUNT} older tags..."
+
+            while read -r TAG; do
+              if [ -z "${TAG}" ]; then continue; fi
+
+              DELETE_URL="${JFROG_URL}/artifactory/${JFROG_REPO}/${IMAGE_PATH}/${TAG}"
+
+              if [ "${DRY_RUN}" = "true" ]; then
+                echo "[DRY RUN] Would delete: ${DELETE_URL}"
+              else
+                echo "Deleting: ${DELETE_URL}"
+                HTTP_CODE=$(curl -sS -o /tmp/delete_response.txt -w "%{http_code}" \
+                  -X DELETE \
+                  -u "${JFROG_USER}:${JFROG_PASSWORD}" \
+                  "${DELETE_URL}")
+
+                if [ "${HTTP_CODE}" = "200" ] || [ "${HTTP_CODE}" = "202" ] || [ "${HTTP_CODE}" = "204" ]; then
+                  echo "  [SUCCESS] Deleted tag: ${TAG}"
+                else
+                  echo "  [WARN] Failed to delete ${TAG} (HTTP ${HTTP_CODE})"
+                fi
+              fi
+            done <<< "${DELETE_TAGS}"
+
+            echo "::endgroup::"
+          done
+          echo "[INFO] Retention cleanup completed!"

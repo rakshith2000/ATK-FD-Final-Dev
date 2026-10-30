@@ -1,0 +1,578 @@
+name: ci-cd-release
+
+on:
+  pull_request:
+    branches:
+      - release
+    types:
+      - closed
+  workflow_dispatch:
+    inputs:
+      components:
+        description: 'Components to deploy (comma-separated: backend,frontend,keycloak,litellm,grafana,rabbitmq,nginx,admin_frontend,agentgateway_engine,agentgateway_ui,fasteai_core,fasteai_backend,fasteai_mcp)'
+        required: false
+        default: ''
+      image_tag:
+        description: 'Existing image tag to redeploy without rebuilding (leave blank to build new)'
+        required: false
+        default: ''
+      keep_count:
+        description: 'Number of recent image tags to keep per component in JFrog (default: 5)'
+        required: false
+        default: '5'
+
+env:
+  JFROG_REGISTRY: 'atkcontainerhub.jfrog.io'
+  JFROG_REPO:     'release'
+  RELEASE_NUMBER: '2.2.0'
+  AWS_REGION:     'ap-south-1'
+  CLUSTER_NAME:   'ATK-Demo-Cluster'
+  NAMESPACE:      'release'
+  HELM_BASE_PATH: './build-configs/ITOpsToolkit_Build/release_Build/helm_eks'
+
+  # Set to 'true' to build and deploy that component, 'false' to skip.
+  # Update these flags in your PR before merging.
+  BUILD_KEYCLOAK:       'true'
+  BUILD_LITELLM:        'false'
+  BUILD_BACKEND:        'false'
+  BUILD_FRONTEND:       'true'
+  BUILD_GRAFANA:        'false'
+  BUILD_RABBITMQ:       'false'
+  #BUILD_NGINX:          'false'
+  BUILD_FASTEAI_CORE: 'false'
+  BUILD_FASTEAI_BACKEND: 'false'
+  BUILD_FASTEAI_MCP: 'false'
+  BUILD_AGENTGATEWAY_ENGINE: 'false'
+  BUILD_AGENTGATEWAY_UI: 'false'
+
+jobs:
+  ## ── JOB 1: BUILD AND PUSH ───────────────────────────────────────────────────
+  # Reads component-registry-release.json to detect what changed and build only those images.
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      branch_pr_tag: ${{ steps.set_tag.outputs.branch_pr_tag }}
+      build_flags:   ${{ steps.detect.outputs.build_flags }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set IMAGE_TAG
+        id: set_tag
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ -n "${{ inputs.image_tag }}" ]; then
+            BRANCH_PR_TAG="${{ inputs.image_tag }}"
+            echo "Redeploying existing tag: $BRANCH_PR_TAG"
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            BRANCH_PR_TAG="manual_${{ github.run_number }}_${{ env.RELEASE_NUMBER }}"
+          else
+           
+            BRANCH_PR_TAG="${{ env.RELEASE_NUMBER }}_${{ github.event.pull_request.number }}"
+          fi
+          echo "BRANCH_PR_TAG=$BRANCH_PR_TAG" >> $GITHUB_ENV
+          echo "branch_pr_tag=$BRANCH_PR_TAG"  >> $GITHUB_OUTPUT
+          echo "Image tag: $BRANCH_PR_TAG"
+
+      # Reads component-registry-release.json and BUILD_* env flags set at the top of this file.
+      # On PR merge: uses the BUILD_* flags as-is — developer sets them before merging.
+      # On manual dispatch: parses the comma-separated 'components' input instead.
+      # Outputs build_flags as a JSON object so the deploy job can import them.
+      - name: Resolve build flags
+        id: detect
+        run: |
+          REGISTRY=$(cat .github/component-registry-release.json)
+          COUNT=$(echo "$REGISTRY" | jq length)
+          BUILD_FLAGS_JSON="{}"
+          INPUT="${{ inputs.components }}"
+
+          for i in $(seq 0 $((COUNT - 1))); do
+            NAME=$(echo "$REGISTRY" | jq -r ".[$i].name")
+            FLAG="BUILD_$(echo "$NAME" | tr '[:lower:]' '[:upper:]')"
+
+            if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+              if echo ",$INPUT," | grep -q ",${NAME},"; then
+                eval "${FLAG}=true"
+              else
+                eval "${FLAG}=false"
+              fi
+            else
+              VAL=$(eval echo "\$$FLAG")
+              if [ "$VAL" != "true" ]; then VAL="false"; fi
+              eval "${FLAG}=$VAL"
+            fi
+
+            VAL=$(eval echo "\$$FLAG")
+            echo "${FLAG}=${VAL}" >> $GITHUB_ENV
+            BUILD_FLAGS_JSON=$(echo "$BUILD_FLAGS_JSON" | jq ". + {\"${NAME}\": \"${VAL}\"}")
+          done
+
+          echo "build_flags=$(echo "$BUILD_FLAGS_JSON" | jq -c .)" >> $GITHUB_OUTPUT
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  TRIGGER    → ${{ github.event_name }}"
+          echo "  BRANCH     → ${{ github.base_ref }}"
+          echo "  PR NUMBER  → ${{ github.event.pull_request.number }}"
+          echo "  IMAGE TAG  → ${{ env.BRANCH_PR_TAG }}"
+          echo ""
+          echo "  COMPONENTS TO BUILD:"
+          echo "$BUILD_FLAGS_JSON" | jq -r 'to_entries[] | "  \(.key): \(.value)"'
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+      - name: Free disk space
+        run: |
+          sudo apt-get clean
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          docker system prune -af --volumes
+          docker builder prune -af
+          df -h
+
+      - name: Login to JFrog
+        run: |
+          echo "${{ secrets.JFROG_PASSWORD }}" | docker login ${{ env.JFROG_REGISTRY }} -u ${{ secrets.JFROG_USER }} --password-stdin
+
+      # Loops over component-registry-release.json and builds images for all components whose flag is true.
+      # If image_tag was provided (redeploy without rebuild), this step exits immediately.
+      # To add a new component: add its entry to component-registry-release.json — no changes needed here.
+      - name: Build and push changed images
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ -n "${{ inputs.image_tag }}" ]; then
+            echo "image_tag provided — skipping builds, will redeploy existing images"
+            exit 0
+          fi
+
+          REGISTRY=$(cat .github/component-registry-release.json)
+          COUNT=$(echo "$REGISTRY" | jq length)
+          TAG=${{ env.BRANCH_PR_TAG }}
+
+          for i in $(seq 0 $((COUNT - 1))); do
+            NAME=$(echo "$REGISTRY" | jq -r ".[$i].name")
+            FLAG="BUILD_$(echo "$NAME" | tr '[:lower:]' '[:upper:]')"
+            if [ "$(eval echo \"\$$FLAG\")" != "true" ]; then continue; fi
+            
+            IMAGE=$(echo "$REGISTRY" | jq -r ".[$i].image")
+            SRC=$(echo   "$REGISTRY" | jq -r ".[$i].src_path")
+            IMG="${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}/${IMAGE}:${IMAGE}_${TAG}"
+
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "Building → $IMG"
+            docker build --no-cache --pull -t "$IMG" "$SRC"
+            docker push "$IMG"
+            docker rmi  "$IMG"
+          done
+
+  # ── JOB 2: DEPLOY ───────────────────────────────────────────────────────────
+  # Deploy order is defined by the order of entries in component-registry-release.json.
+  # Pre-deploy steps (configmap creation) stay explicit — each component has unique files.
+  # Scale-down and the actual Helm/script deploy call are handled by the generic loop at the end.
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout Build Branch
+        uses: actions/checkout@v4
+        with:
+          repository: CognizantCodeHub/IPR001380_MAF
+          ref: build
+          path: build-configs
+          fetch-depth: 1
+
+      - name: Verify release Build Charts
+        run: |
+          ls -la ${{ env.HELM_BASE_PATH }}
+
+      # Re-imports build flags from the build job.
+      # build_flags is a JSON object {"backend":"true","frontend":"false",...}.
+      # jq converts it to BUILD_BACKEND=true, BUILD_FRONTEND=false, etc. in GITHUB_ENV.
+      - name: Import build flags
+        run: |
+          echo '${{ needs.build-and-push.outputs.build_flags }}' \
+            | jq -r 'to_entries[] | "BUILD_\(.key | ascii_upcase)=\(.value)"' \
+            >> $GITHUB_ENV
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  DEPLOYING:"
+          echo '${{ needs.build-and-push.outputs.build_flags }}' \
+            | jq -r 'to_entries[] | "  \(.key): \(.value)"'
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+      # Note: AWS_SESSION_TOKEN is temporary. Replace with OIDC role-based auth for production.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token:     ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.CLUSTER_NAME }}
+
+      - name: Create namespace and JFrog pull secret
+        run: |
+          kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret docker-registry jfrog-pull-secret \
+            --docker-server=${{ env.JFROG_REGISTRY }} \
+            --docker-username=${{ secrets.JFROG_USER }} \
+            --docker-password=${{ secrets.JFROG_PASSWORD }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl patch serviceaccount default \
+            --namespace ${{ env.NAMESPACE }} \
+            -p '{"imagePullSecrets": [{"name": "jfrog-pull-secret"}]}'
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'latest'
+
+      # ── PRE-DEPLOY: configmap creation ───────────────────────────────────────
+      # All steps call create_configmap_with_files.sh from the component's hotfix folder.
+      # The script auto-discovers every file in the folder — adding a new file to any
+      # hotfix folder is sufficient; no changes to this workflow are needed.
+      # Namespace is piped via stdin to satisfy the interactive read in the script.
+
+      - name: Pre-deploy — LiteLLM configmaps
+        if: env.BUILD_LITELLM == 'true'
+        run: |
+          cd ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_LiteLLM/hotfix
+          echo "${{ env.NAMESPACE }}" | bash create_configmap_with_files.sh
+
+      - name: Pre-deploy — Backend configmaps
+        if: env.BUILD_BACKEND == 'true'
+        run: |
+          # vault_env contains a placeholder token. If the file exists, replace it with
+          # the real secret in-place (safe — runner is ephemeral, nothing is committed).
+          [ -f ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Backend/hotfix/vault_env ] && \
+            sed -i "s/VAULT_TOKEN_PLACEHOLDER/${{ secrets.VAULT_TOKEN_RELEASE }}/" \
+              ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Backend/hotfix/vault_env
+          cd ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Backend/hotfix
+          echo "${{ env.NAMESPACE }}" | bash create_configmap_with_files.sh
+
+      - name: Pre-deploy — Frontend configmaps
+        if: env.BUILD_FRONTEND == 'true'
+        run: |
+          cd ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Frontend/hotfix
+          echo "${{ env.NAMESPACE }}" | bash create_configmap_with_files.sh
+
+      - name: Pre-deploy — Grafana configmaps
+        if: env.BUILD_GRAFANA == 'true'
+        run: |
+          cd ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Grafana/hotfix
+          echo "${{ env.NAMESPACE }}" | bash create_configmap_with_files.sh
+
+      - name: Pre-deploy — Agent Gateway configmaps
+        if: env.BUILD_AGENTGATEWAY_ENGINE == 'true'
+        run: |
+          cd ${{ env.HELM_BASE_PATH }}/ITOpstoolkit_Agent_Gateway_Engine/hotfix
+          echo "${{ env.NAMESPACE }}" | bash create_configmap_with_files.sh
+
+      
+
+
+      # ── SCALE DOWN + DEPLOY ──────────────────────────────────────────────────
+      # Generic loop over component-registry-release.json in defined order.
+      # For each component flagged for deployment:
+      #   - scale_down=true  → scales the deployment to 0 and waits for pods to terminate
+      #   - deploy_strategy=atomic   → helm upgrade with --atomic (Keycloak)
+      #   - deploy_strategy=no_wait  → helm upgrade with --wait=false (LiteLLM)
+      #   - deploy_strategy=script   → calls the component's deploy_script
+      # To add a new component: add its entry to component-registry-release.json.
+      #
+      # NOTE: --atomic is TEMPORARILY DISABLED for the atomic strategy so failed pods
+      # remain in-cluster for post-mortem via the "Debug on failure" step below.
+      # Restore `--atomic` in the atomic case once the current keycloak issue is resolved.
+      - name: Scale down and deploy
+        run: |
+          REGISTRY=$(cat .github/component-registry-release.json)
+          COUNT=$(echo    "$REGISTRY" | jq length)
+          TAG=${{ needs.build-and-push.outputs.branch_pr_tag }}
+          NS=${{ env.NAMESPACE }}
+          REG=${{ env.JFROG_REGISTRY }}/${{ env.JFROG_REPO }}
+
+          for i in $(seq 0 $((COUNT - 1))); do
+            NAME=$(echo       "$REGISTRY" | jq -r ".[$i].name")
+            FLAG="BUILD_$(echo "$NAME"    | tr '[:lower:]' '[:upper:]')"
+            if [ "$(eval echo \"\$$FLAG\")" != "true" ]; then continue; fi
+          
+
+            IMAGE=$(echo      "$REGISTRY" | jq -r ".[$i].image")
+            HELM_PATH=$(echo  "$REGISTRY" | jq -r ".[$i].helm_path")
+            HELM_REL=$(echo   "$REGISTRY" | jq -r ".[$i].helm_release")
+            DEPLOY_SH=$(echo  "$REGISTRY" | jq -r ".[$i].deploy_script // empty")
+            STRATEGY=$(echo   "$REGISTRY" | jq -r ".[$i].deploy_strategy")
+            DEPLOYMENT=$(echo "$REGISTRY" | jq -r ".[$i].k8s_deployment")
+            LABEL=$(echo      "$REGISTRY" | jq -r ".[$i].k8s_label")
+            SCALE=$(echo      "$REGISTRY" | jq -r ".[$i].scale_down")
+            IMG="${REG}/${IMAGE}:${IMAGE}_${TAG}"
+
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "Component : $NAME"
+            echo "Image     : $IMG"
+            echo "Helm Path : $HELM_PATH"
+            echo "Strategy  : $STRATEGY"
+
+            if [ "$SCALE" == "true" ]; then
+              echo "Scaling down $DEPLOYMENT..."
+              kubectl scale deployment "$DEPLOYMENT" --replicas=0 -n "$NS" || true
+              kubectl wait pod -l "app.kubernetes.io/name=${LABEL}" \
+                --for=delete -n "$NS" --timeout=120s || true
+              kubectl delete pod -l "app.kubernetes.io/name=${LABEL}" \
+                -n "$NS" --force --grace-period=0 || true
+            fi
+
+            case "$STRATEGY" in
+              atomic)
+                # --atomic removed temporarily so failed pods stay for diagnosis.
+                # Timeout bumped to 15m — Keycloak cold-start + DB migration can exceed 10m.
+                helm upgrade --install "$HELM_REL" "$HELM_PATH" \
+                  --namespace "$NS" \
+                  --set image.tag="${IMAGE}_${TAG}" \
+                  --timeout 15m
+                ;;
+              no_wait)
+                helm upgrade --install "$HELM_REL" "$HELM_PATH" \
+                  --namespace "$NS" \
+                  --set image.tag="${IMAGE}_${TAG}" \
+                  --wait=false
+                ;;
+              script)
+                if [ -z "$DEPLOY_SH" ] || [ ! -f "${HELM_PATH}/${DEPLOY_SH}" ]; then
+                  echo "No deploy script for $NAME — skipping deploy step"
+                else
+                  (cd "$HELM_PATH" && NAMESPACE="$NS" IMAGE_TAG="${IMAGE}_${TAG}" bash "$DEPLOY_SH")
+                fi
+                ;;
+              *)
+                echo "Unknown deploy_strategy '$STRATEGY' for $NAME — skipping"
+                ;;
+            esac
+          done
+
+      # ── DEBUG ON FAILURE ─────────────────────────────────────────────────────
+      # Runs only when a previous step in this job failed. Dumps pod state, describe
+      # output, events, and logs for every component flagged for build in this run.
+      # Because --atomic is disabled above, pods are still present here for inspection.
+      - name: Debug on failure
+        if: failure()
+        run: |
+          NS=${{ env.NAMESPACE }}
+          REGISTRY=$(cat .github/component-registry-release.json)
+          COUNT=$(echo "$REGISTRY" | jq length)
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  CLUSTER-WIDE STATE"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "  ALL PODS IN $NS"
+          kubectl -n "$NS" get pods -o wide || true
+          echo ""
+          echo "  RECENT EVENTS ($NS)"
+          kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -50 || true
+          echo ""
+          echo "  PVCs"
+          kubectl -n "$NS" get pvc || true
+          echo ""
+          echo "  HELM RELEASES"
+          helm list -n "$NS" -a || true
+
+          for i in $(seq 0 $((COUNT - 1))); do
+            NAME=$(echo  "$REGISTRY" | jq -r ".[$i].name")
+            FLAG="BUILD_$(echo "$NAME" | tr '[:lower:]' '[:upper:]')"
+            if [ "$(eval echo \"\$$FLAG\")" != "true" ]; then continue; fi
+
+            LABEL=$(echo "$REGISTRY" | jq -r ".[$i].k8s_label")
+            DEPLOYMENT=$(echo "$REGISTRY" | jq -r ".[$i].k8s_deployment")
+
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  DEBUG: $NAME  (label=$LABEL  deployment=$DEPLOYMENT)"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+            echo ""
+            echo "  --- PODS ---"
+            kubectl -n "$NS" get pods -l "app.kubernetes.io/name=${LABEL}" -o wide || true
+
+            echo ""
+            echo "  --- DEPLOYMENT ---"
+            kubectl -n "$NS" describe deployment "$DEPLOYMENT" || true
+
+            echo ""
+            echo "  --- DESCRIBE POD ---"
+            kubectl -n "$NS" describe pod -l "app.kubernetes.io/name=${LABEL}" || true
+
+            echo ""
+            echo "  --- CURRENT LOGS (all containers, incl. init) ---"
+            kubectl -n "$NS" logs -l "app.kubernetes.io/name=${LABEL}" \
+              --all-containers=true --tail=300 --prefix=true --ignore-errors || true
+
+            echo ""
+            echo "  --- PREVIOUS LOGS (crash-loop history, if any) ---"
+            kubectl -n "$NS" logs -l "app.kubernetes.io/name=${LABEL}" \
+              --all-containers=true --previous --tail=200 --prefix=true --ignore-errors || true
+          done
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  End of debug dump"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+      # ── VERIFY ───────────────────────────────────────────────────────────────
+      # Generic rollout status check for all deployed components.
+      # To add a new component: add its entry to component-registry-release.json — no changes here.
+      - name: Verify deployment
+        run: |
+          REGISTRY=$(cat .github/component-registry-release.json)
+          COUNT=$(echo "$REGISTRY" | jq length)
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          for i in $(seq 0 $((COUNT - 1))); do
+            NAME=$(echo       "$REGISTRY" | jq -r ".[$i].name")
+            FLAG="BUILD_$(echo "$NAME"    | tr '[:lower:]' '[:upper:]')"
+            if [ "$(eval echo \"\$$FLAG\")" != "true" ]; then continue; fi
+
+            DEPLOYMENT=$(echo "$REGISTRY" | jq -r ".[$i].k8s_deployment")
+            TIMEOUT=$(echo    "$REGISTRY" | jq -r ".[$i].rollout_timeout")
+
+            echo "  ROLLOUT → $DEPLOYMENT"
+            kubectl rollout status "deployment/${DEPLOYMENT}" \
+              -n ${{ env.NAMESPACE }} --timeout="${TIMEOUT}" || true
+            echo ""
+          done
+
+          echo "  PODS"
+          kubectl get pods -n ${{ env.NAMESPACE }}
+          echo ""
+          echo "  INGRESS"
+          kubectl get ingress -n ${{ env.NAMESPACE }}
+          echo ""
+          echo "  SERVICES"
+          kubectl get services -n ${{ env.NAMESPACE }}
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+  # ── JOB 3: CLEANUP OLD IMAGES ───────────────────────────────────────────────
+  # Retains only the latest image tags per component in JFrog Artifactory.
+  # Runs after successful deploy; skipped when redeploying an existing tag.
+  cleanup-jfrog-release-images:
+    runs-on: ubuntu-latest
+    needs:
+      - build-and-push
+      - deploy
+    if: >
+      needs.deploy.result == 'success' &&
+      !(github.event_name == 'workflow_dispatch' && inputs.image_tag != '')
+
+    env:
+      JFROG_URL: "https://atkcontainerhub.jfrog.io"
+      JFROG_REPO: "maf-release-atk"
+      KEEP_LAST: "${{ github.event_name == 'workflow_dispatch' && inputs.keep_count || '5' }}"
+      DRY_RUN: "false"
+      JFROG_USER: "${{ secrets.JFROG_USER }}"
+      JFROG_PASSWORD: "${{ secrets.JFROG_PASSWORD }}"
+
+    steps:
+      - name: Cleanup old Docker image tags from JFrog
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${JFROG_USER}" ] || [ -z "${JFROG_PASSWORD}" ]; then
+            echo "ERROR: JFROG_USER or JFROG_PASSWORD secret is missing"
+            exit 1
+          fi
+
+          echo "JFROG_URL=${JFROG_URL}"
+          echo "JFROG_REPO=${JFROG_REPO}"
+          echo "KEEP_LAST=${KEEP_LAST}"
+          echo "DRY_RUN=${DRY_RUN}"
+
+          IMAGES=(
+            "admin_frontend"
+            "frontend"
+            "backend"
+            "keycloak"
+            "rabbitmq"
+            "fastai_core"
+            "fastai_backend"
+            "fastai_mcp"
+            "agentgateway_ui"
+            "agentgate"
+          )
+    
+          
+          for IMAGE_PATH in "${IMAGES[@]}"; do
+            echo ""
+            echo "===================================================="
+            echo "Checking image: ${JFROG_REPO}/${IMAGE_PATH}"
+            echo "===================================================="
+
+            TAGS_RESPONSE=$(curl -sS \
+              -u "${JFROG_USER}:${JFROG_PASSWORD}" \
+              "${JFROG_URL}/artifactory/api/docker/${JFROG_REPO}/v2/${IMAGE_PATH}/tags/list")
+
+            echo "${TAGS_RESPONSE}" | jq . >/dev/null 2>&1 || {
+              echo "ERROR: Invalid response from JFrog for ${IMAGE_PATH}"
+              echo "${TAGS_RESPONSE}"
+              exit 1
+            }
+
+            TAGS=$(echo "${TAGS_RESPONSE}" | jq -r '.tags[]?' | sort -V)
+
+            if [ -z "${TAGS}" ]; then
+              echo "No tags found for ${IMAGE_PATH}"
+              continue
+            fi
+
+            TAG_COUNT=$(echo "${TAGS}" | wc -l | xargs)
+
+            echo "Total tags found: ${TAG_COUNT}"
+            echo "Tags:"
+            echo "${TAGS}"
+
+            if [ "${TAG_COUNT}" -le "${KEEP_LAST}" ]; then
+              echo "Nothing to delete. Current tag count (${TAG_COUNT}) is <= KEEP_LAST (${KEEP_LAST})"
+              continue
+            fi
+
+            DELETE_COUNT=$((TAG_COUNT - KEEP_LAST))
+            DELETE_TAGS=$(echo "${TAGS}" | head -n "${DELETE_COUNT}")
+
+            echo ""
+            echo "Tags selected for deletion:"
+            echo "${DELETE_TAGS}"
+
+            while read -r TAG; do
+              if [ -z "${TAG}" ]; then
+                continue
+              fi
+
+              DELETE_URL="${JFROG_URL}/artifactory/${JFROG_REPO}/${IMAGE_PATH}/${TAG}"
+
+              if [ "${DRY_RUN}" = "true" ]; then
+                echo "[DRY RUN] Would delete: ${DELETE_URL}"
+              else
+                echo "Deleting: ${DELETE_URL}"
+
+                HTTP_CODE=$(curl -sS -o /tmp/delete_response.txt -w "%{http_code}" \
+                  -X DELETE \
+                  -u "${JFROG_USER}:${JFROG_PASSWORD}" \
+                  "${DELETE_URL}")
+
+                cat /tmp/delete_response.txt || true
+                echo ""
+
+                if [ "${HTTP_CODE}" = "200" ] || [ "${HTTP_CODE}" = "202" ] || [ "${HTTP_CODE}" = "204" ]; then
+                  echo "Deleted successfully: ${TAG}"
+                else
+                  echo "ERROR: Failed to delete ${TAG}. HTTP_CODE=${HTTP_CODE}"
+                  exit 1
+                fi
+              fi
+            done <<< "${DELETE_TAGS}"
+
+          done

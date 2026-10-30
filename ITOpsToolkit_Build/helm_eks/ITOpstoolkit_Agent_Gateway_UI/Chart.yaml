@@ -1,0 +1,6 @@
+apiVersion: v2
+name: itops-agent-gateway-ui
+description: Agent Gateway UI Helm Chart for EKS
+type: application
+version: 0.1.0
+appVersion: "latest"

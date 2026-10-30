@@ -1,0 +1,16 @@
+version: "3.8"
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    ports:
+      - "8443:8443"
+    volumes:
+      - /etc/certs/fullchain.pem:/opt/keycloak/conf/fullchain.pem:ro
+      - /etc/certs/privkey.pem:/opt/keycloak/conf/privkey.pem:ro
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: AdC10ack
+      KC_HTTPS_CERTIFICATE_FILE: /opt/keycloak/conf/fullchain.pem
+      KC_HTTPS_CERTIFICATE_KEY_FILE: /opt/keycloak/conf/privkey.pem
+      KC_HOSTNAME: mafdev.autonomousitopstoolkit.com
+    command: start-dev

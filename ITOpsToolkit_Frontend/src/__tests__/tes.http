@@ -1,0 +1,115 @@
+
+###############################################################################
+# ServiceNow Table Hierarchy + Field Dictionary Introspection
+# Target instance: cisicmpengineering1.service-now.com
+#
+# HOW TO USE:
+# - Replace <PASTE_TOKEN_HERE> with your bearer token in each request.
+# - Run requests top to bottom. Each "Walk hierarchy" call tells you the next
+#   table name to plug into the *next* call's sysparm_query.
+# - Use the "###" line to separate requests (REST Client / VS Code extension).
+###############################################################################
+
+
+###############################################################################
+# STEP 1: Walk the table hierarchy for INCIDENT
+#
+# sys_db_object.super_class only stores the IMMEDIATE parent table.
+# You must call this once per level until super_class comes back empty.
+###############################################################################
+
+# --- 1a. Start at the leaf table: incident ---
+# Expect: super_class = "task"  (incident extends task)
+GET https://cisicmpengineering1.service-now.com/api/now/table/sys_db_object?sysparm_query=name=incident&sysparm_fields=super_class&sysparm_display_value=true
+Authorization: Bearer <PASTE_TOKEN_HERE>
+Accept: application/json
+
+###
+
+# --- 1b. Check the next level up: task ---
+# Expect: super_class = ""  (task is the root, stop walking here)
+# If this were NOT empty, you'd keep going with whatever table name it returns.
+GET https://cisicmpengineering1.service-now.com/api/now/table/sys_db_object?sysparm_query=name=task&sysparm_fields=super_class&sysparm_display_value=true
+Authorization: Bearer <PASTE_TOKEN_HERE>
+Accept: application/json
+
+# Result of Step 1: hierarchy chain = ['incident', 'task']
+
+
+###############################################################################
+# STEP 2: Fetch ALL dictionary fields across the full chain in ONE call
+#
+# Plug every table name from Step 1's chain into nameIN.
+# "name" MUST be included in sysparm_fields so you know which table each
+# field row came from (needed for de-dupe logic if a field is overridden
+# at multiple levels).
+###############################################################################
+
+GET https://cisicmpengineering1.service-now.com/api/now/table/sys_dictionary?sysparm_query=nameINincident,task^active=true&sysparm_fields=name,element,column_label,internal_type,mandatory,reference,max_length&sysparm_limit=1000
+Authorization: Bearer <PASTE_TOKEN_HERE>
+Accept: application/json
+
+
+###############################################################################
+# SAME PATTERN FOR SC_TASK
+###############################################################################
+
+# --- Walk hierarchy: sc_task -> task ---
+GET https://cisicmpengineering1.service-now.com/api/now/table/sys_db_object?sysparm_query=name=sc_task&sysparm_fields=super_class&sysparm_display_value=true
+Authorization: Bearer <PASTE_TOKEN_HERE>
+Accept: application/json
+
+###
+
+# --- Confirm task is root (already proven above, included for completeness) ---
+GET https://cisicmpengineering1.service-now.com/api/now/table/sys_db_object?sysparm_query=name=task&sysparm_fields=super_class&sysparm_display_value=true
+Authorization: Bearer <PASTE_TOKEN_HERE>
+Accept: application/json
+
+###
+
+# --- Fetch all fields across sc_task + task ---
+GET https://cisicmpengineering1.service-now.com/api/now/table/sys_dictionary?sysparm_query=nameINsc_task,task^active=true&sysparm_fields=name,element,column_label,internal_type,mandatory,reference,max_length&sysparm_limit=1000
+Authorization: Bearer <PASTE_TOKEN_HERE>
+Accept: application/json
+
+
+###############################################################################
+# EXAMPLE: 3-LEVEL HIERARCHY (hypothetical custom table)
+#
+# If you had a custom table u_critical_incident extending incident
+# (which extends task), the walk would take 3 calls instead of 2:
+#
+#   u_critical_incident -> incident -> task -> (stop, super_class empty)
+#
+# Uncomment and adjust table name to test against any custom table you have.
+###############################################################################
+
+# GET https://cisicmpengineering1.service-now.com/api/now/table/sys_db_object?sysparm_query=name=u_critical_incident&sysparm_fields=super_class&sysparm_display_value=true
+# Authorization: Bearer <PASTE_TOKEN_HERE>
+# Accept: application/json
+#
+# ### (would return super_class = "incident", then repeat with name=incident,
+#       then name=task, same as Step 1 above)
+#
+# Final chain: ['u_critical_incident', 'incident', 'task']
+# Dictionary call: sysparm_query=nameINu_critical_incident,incident,task^active=true
+
+
+###############################################################################
+# BONUS: Check a SPECIFIC field's dictionary entry across the whole chain
+# (useful when a field seems "missing" - e.g. cmdb_ci was on task, not incident)
+###############################################################################
+
+GET https://cisicmpengineering1.service-now.com/api/now/table/sys_dictionary?sysparm_query=nameINincident,task^element=cmdb_ci&sysparm_fields=name,element,column_label,internal_type,reference,active
+Authorization: Bearer <PASTE_TOKEN_HERE>
+Accept: application/json
+
+
+###############################################################################
+# BONUS: Get choice options for a specific choice field (e.g. state on incident)
+###############################################################################
+
+GET https://cisicmpengineering1.service-now.com/api/now/table/sys_choice?sysparm_query=name=incident^element=state^inactive=false&sysparm_fields=label,value
+Authorization: Bearer <PASTE_TOKEN_HERE>
+Accept: application/json

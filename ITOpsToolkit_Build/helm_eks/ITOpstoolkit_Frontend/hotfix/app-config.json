@@ -1,0 +1,183 @@
+{
+    "cosmotics": {
+        "brandName": "Cognizant",
+        "enableViewingModeToggle": false
+    },
+    "isInDemoEnvironment": false,
+    "demoEnvironmentActionMessage": "Demo Environment Info: The Action doesn't Porpagated to Backend since we are in demo",
+    "backend": {
+        "api": {
+            "baseUrl": "<Backend Endpoint URL - Example -> https://dns/api>",
+            "userSnowDetails": "/ticket_management/api/v1/get_user_details/",
+            "listKbCategories": "/knowledge_assist/api/v1/list_knowledge_base_categories_from_itsm/",
+            "listIssuesWithoutKbArticles": "/knowledge_assist/api/v1/list_incs_without_kbs/",
+            "listRecentKbArticles": "/knowledge_assist/api/v1/list_recent_knowledge_articles_from_itsm/",
+            "refineKbArticle": "/knowledge_assist/api/v1/refine_kb_article/",
+            "generateKbArticle": "/knowledge_assist/api/v1/generate_kb_article/",
+            "mergeKbArticles": "/knowledge_assist/api/v1/merge_kb_articles/",
+            "listDuplicateKnowledgeArticles": "/knowledge_assist/api/v1/find_duplicate_knowledge_articles/",
+            "createKnowledgeArticle": "/knowledge_assist/api/v1/push_knowledge_article_to_itsm/",
+            "updateKnowledgeArticle": "/knowledge_assist/api/v1/update_knowledge_article_in_itsm/",
+            "listKnowledgeArticles": "/knowledge_assist/api/v1/list_knowledge_articles_from_itsm/",
+            "listRelevantArticles": "/ticket_management/api/v1/list_relevant_articles/",
+            "kbAiScoreByContent": "/knowledge_assist/api/v1/score_kb_article/",
+            "kbAiScoreByNumber": "/knowledge_assist/api/v1/fetch_kb_article_scores/",
+            "generateResolutionNotes": "/ticket_management/api/v1/generate_resolution_notes",
+            "draftChange": "/change_management/api/v1/draft_change/",
+            "uploadDraftImage": "/change_management/api/v1/upload_image/",
+            "pushChangeRequestToItsm": "/change_management/api/v1/push_change_request_to_itsm/",
+            "listAllQuizzes": "/train_assist/api/v1/list_all_quizzes/",
+            "chatBot": "/ticket_management/api/v1/demo_chat",
+            "getToolkitPackageConfig": "/admin/api/v1/get_toolkit_package_config/",
+            "updateToolkitPackageConfig": "/admin/api/v1/update_toolkit_package_global_config",
+            "updateAgentDefination": "/admin/api/v1/update_agent_definition",
+            "listLLMs": "/admin/api/v1/list_llms/",
+            "listLLMsWithConfig": "/admin/api/v1/get_llm_config/all",
+            "onboardLLM": "/admin/api/v1/onboard_llm/",
+            "getLLMConfig": "/admin/api/v1/get_llm_config/",
+            "deleteLLM": "/admin/api/v1/delete_llm/",
+            "listLiteLLMProxies": "/admin/api/v1/get_litellm_proxy_config/",
+            "onboardLiteLLMProxy": "/admin/api/v1/onboard_litellm_proxy/",
+            "deleteLiteLLMProxy": "/admin/api/v1/delete_litellm_proxy/",
+            "listITSMConnectors": "/admin/api/v1/list_itsm_connectors/",
+            "onboardITSMConnector": "/admin/api/v1/onboard_itsm_connector/",
+            "deleteITSMConnector": "/admin/api/v1/delete_itsm_connector/",
+            "getITSMConnectorConfig": "/admin/api/v1/get_itsm_connector_config/",
+            "uploadVaultConfig": "/admin/api/v1/upload_vault_config",
+            "meeting_by_grp_partcipants": "/meeting_assist/api/v1/list_meetings_by_participant_and_group/",
+            "meeting_onboard": "/meeting_assist/api/v1/onboard_meeting_details",
+            "meeting_convert_to_html": "/meeting_assist/api/v1/convert_to_html/",
+            "meeting_details_by_meeting_id": "/meeting_assist/api/v1/meetings/<MEETING_ID_PLACEHOLDER>/details",
+            "meeting_update_group": "/meeting_assist/api/v1/meetings/<MEETING_ID_PLACEHOLDER>/update_groups_by_meeting_id/",
+            "meeting_archived_articles": "/meeting_assist/api/v1/meetings/<MEETING_ID_PLACEHOLDER>/archived_articles",
+            "meeting_chat": "/meeting_assist/api/v1/meetings/ask",
+            "meeting_get_auth_details": "/meeting_assist/api/v1/meetings/<MEETING_ID_PLACEHOLDER>/get_public_flow_auth_details/<MEETING_RETRIEVAL_TYPE_PLACEHOLDER>",
+            "meeting_delete": "/meeting_assist/api/v1/meetings/<MEETING_ID_PLACEHOLDER>/delete",
+            "meeting_start_refresh": "/meeting_assist/api/v1/meetings/<MEETING_ID_PLACEHOLDER>/start_or_refresh/<MEETING_RETRIEVAL_TYPE_PLACEHOLDER>",
+            "meeting_transcript": "/meeting_assist/api/v1/meetings/<MEETING_ID_PLACEHOLDER>/transcript/<MEETING_RETRIEVAL_TYPE_PLACEHOLDER>",
+            "problem_list_tickets": "/problem_assist/api/v1/problem_ticket_details/",
+            "problem_assignment_groups": "/ticket_management/api/v1/list_all_assignment_groups/",
+            "problem_state_choices": "/ticket_management/api/v1/list_incident_state_choice/",
+            "problem_group_members": "/ticket_management/api/v1/list_group_members/",
+            "problem_push_to_itsm": "/problem_assist/api/v1/push_problem_ticket_to_itsm/",
+            "problem_update_details": "/problem_assist/api/v1/update_problem_ticket_details/",
+            "generateMcqs": "/train_assist/api/v1/generate_mcqs/",
+            "getMcqs": "/train_assist/api/v1/get_mcqs/",
+            "submitQuiz": "/train_assist/api/v1/submit_quiz/",
+            "listQuestionsWithIncorrectResponses": "/train_assist/api/v1/list_questions_with_incorrect_responses/",
+            "generateScenarios": "/train_assist/api/v1/generate_scenarios/",
+            "listQuizzes": "/train_assist/api/v1/list_all_quizzes/",
+            "listQuizzesForUser": "/train_assist/api/v1/list_all_quizzes_for_user/",
+            "get_mim_details": "/mim_assist/api/v1/get_mim_details/",
+            "upload_shift_roaster": "/mim_assist/api/v1/upload_shift_roaster/",
+            "download_roaster_file": "/mim_assist/api/v1/download_roaster_file/",
+            "update_form_configuration": "/admin/api/v1/form/",
+            "create_form_configuration": "/admin/api/v1/form/",
+            "get_form_configuration": "/admin/api/v1/form/<FORM_NAME_PLACEHOLDER>",
+            "delete_form_configuration": "/admin/api/v1/form/<FORM_NAME_PLACEHOLDER>"
+        }
+    },
+    "serviceNow": {
+        "api": {
+            "baseUrl": "<Servicenow URL>",
+            "userDetails": "/api/now/table/sys_user",
+            "userMemberOfAssignmentGroupsByUserSysId": "/api/now/table/sys_user_grmember?sysparm_fields=group&sysparm_display_value=all&sysparm_query=user=<USER_SYS_ID_PLACEHOLDER>",
+            "assignmentGroups": "/api/now/table/sys_user_group?sysparm_fields=name,sys_id",
+            "incidentTable": "/api/now/table/incident",
+            "knowledgeTable": "/api/now/table/kb_knowledge",
+            "problemTable": "/api/now/table/problem",
+            "scRequestTable": "/api/now/table/sc_request",
+            "sysChoiceTable": "/api/now/table/sys_choice",
+            "ticketsAssignedByUserSysId": "/api/now/table/<TICKET_TYPE_PLACEHOLDER>?sysparm_query=assigned_to%3D<USER_SYS_ID_PLACEHOLDER>%5EstateNOT%20IN6%2C7&sysparm_display_value=all",
+            "ticketsAssignedByGroupQuery": "/api/now/table/<TICKET_TYPE_PLACEHOLDER>?sysparm_query=assignment_group%3D<GROUP_QUERY>NQstate!%3D6%5E7%5E8&sysparm_display_value=all&sysparm_limit=20",
+            "ticketsUnassignedByTicketType": "/api/now/table/<TICKET_TYPE_PLACEHOLDER>?sysparm_query=assigned_toISEMPTY%5EstateNOT%20IN6%2C7%2C3&sysparm_limit=15&sysparm_display_value=all",
+            "ticketStateChoiceByTicketType": "/api/now/table/sys_choice?sysparm_query=name=<TICKET_TYPE_PLACEHOLDER>^element=state&sysparm_fields=label,value,sys_id",
+            "ticketRequestStateChoiceByTicketType": "/api/now/table/sys_choice?sysparm_query=name=<TICKET_TYPE_PLACEHOLDER>^element=request_state&sysparm_fields=label,value,sys_id",
+            "ticketJournalEntriesTypeTicketSysId": "/api/now/table/sys_journal_field?sysparm_query=element_id=<TICKET_SYS_ID_PLACEHOLDER>^elementINwork_notes,comments,close_notes,resolution_notes^ORDERBYDESCsys_created_on&sysparm_fields=element,value,sys_created_by,sys_created_on",
+            "ticketAuditEntriesTypeTicketSysId": "/api/now/table/sys_audit?sysparm_query=documentkey=<TICKET_SYS_ID_PLACEHOLDER>^fieldnameNOT INwork_notes,comments,close_notes,resolution_notes^ORDERBYDESCsys_created_on&sysparm_fields=fieldname,oldvalue,newvalue,sys_created_by,sys_created_on",
+            "ticketRelatedIncidentsByTicketCmdbCiId": "/api/now/table/incident?sysparm_query=sys_id!=<CURRENT_TICKET_SYSID>^cmdb_ci=<CMDB_CI_ID_PLACEHOLDER>^ORDERBYDESCsys_created_on&sysparm_limit=5&sysparm_display_value=all&sysparm_fields=number,short_description,state,severity,opened_at,sys_id,priority",
+            "ticketRelatedChangesByTicketCmdbCiId": "/api/now/table/change_request?sysparm_query=cmdb_ci=<CMDB_CI_ID_PLACEHOLDER>^ORDERBYDESCsys_created_on&sysparm_limit=5&sysparm_display_value=all&sysparm_fields=number,short_description,state,severity,opened_at,sys_id,priority",
+            "ticketRelatedAlertsByTicketSysId": "/api/now/table/em_alert?sysparm_query=incident=<SYS_ID_PLACEHOLDER>&sysparm_fields=number,short_description,state,severity,priority,opened_at,source,sys_id&sysparm_display_value=all&sysparm_limit=5",
+            "groupMembersByGroupSysId": "/api/now/table/sys_user_grmember?sysparm_display_value=all&sysparm_fields=user,sys_id&sysparm_query=group=<GROUP_SYS_ID_PLACEHOLDER>",
+            "searchCmdbCi": "/api/now/table/cmdb_ci?sysparm_fields=name,sys_id&sysparm_limit=20&sysparm_query=nameLIKE<SEARCH_TERM_PLACEHOLDER>",
+            "patchTicketBySysId": "api/now/table/<TICKET_TYPE_PLACEHOLDER>/<SYS_ID_PLACEHOLDER>?sysparm_display_value=all",
+            "ticketRelatedProblemsByTicketCmdbCiId": "/api/now/table/problem?sysparm_query=sys_id!=<CURRENT_TICKET_SYSID>^cmdb_ci=<CMDB_CI_ID_PLACEHOLDER>^ORDERBYDESCsys_created_on&sysparm_limit=5&sysparm_display_value=all&sysparm_fields=number,short_description,state,severity,opened_at,sys_id,priority",
+            "ticketRelatedProblemAlertsByTicketSysId": "/api/now/table/em_alert?sysparm_query=problem=<SYS_ID_PLACEHOLDER>&sysparm_fields=number,short_description,state,severity,priority,opened_at,source,sys_id&sysparm_display_value=all&sysparm_limit=5",
+            "userRelatedRequestsByUserSysId": "/api/now/table/sc_request?sysparm_query=sys_id!=<CURRENT_TICKET_SYSID>^requested_for=<USER_SYS_ID_PLACEHOLDER>^ORDERBYDESCsys_created_on&sysparm_limit=5&sysparm_display_value=all",
+            "relatedRequestsByShortDescription": "/api/now/table/sc_request?sysparm_query=sys_id!=<CURRENT_TICKET_SYSID>^short_descriptionLIKE<KEYWORD_PLACEHOLDER>^ORDERBYDESCsys_created_on&sysparm_limit=5&sysparm_display_value=all",
+            "knowledgeUserCriteria": "/api/now/table/user_criteria",
+            "knowledgeBaseReadAccess": "/api/now/table/kb_uc_can_read_mtom",
+            "knowledgeArticles": "/api/now/table/kb_knowledge",
+            "ticketAttachments": "/api/now/table/sys_attachment",
+            "ticketDownloadAttachment": "/api/now/attachment/<ATTACHMENT_SYS_ID_PLACEHOLDER>/file",
+            "ticketUploadAttachment": "/api/now/attachment/file",
+            "ticketRelatedIncidentByTicketSysId": "/api/now/table/incident?sysparm_query=problem_id=<SYS_ID_PLACEHOLDER>^ORDERBYDESCsys_created_on&sysparm_display_value=all&sysparm_fields=number,short_description,state,severity,opened_at,sys_id,priority",
+            "submitChangeRequest": "/api/now/table/change_request",
+            "taskSlaTable": "/api/now/table/task_sla"
+        }
+    },
+  "fasteai": {
+      "baseUrl": "<FasteAI Base URL  - Example -> https://<DNS>/fasteai-core",
+      "sopBaseUrl": "<FasteAI SOP Base URL  - Example -> https://<DNS>/fasteai-logs",
+      "logsBaseUrl": "<FasteAI Logs Base URL  - Example -> https://<DNS>/fasteai-logs",
+      "sopGeneration": "<FasteAI SOP Genration Base URL  - Example -> https://<DNS>/fasteai-sop",
+      "coreWebsocket": "<FasteAI WebSocket URL  - Example ->  wss://<DNS>/fasteai-core",
+      "schedulerBaseUrl": "<FasteAI SchedulerBase URL  - Example -> https://<DNS>/fasteai-scheduler"
+  },
+  "userServiceNowUserIDKeyInAuth": "preferred_username",
+  "servicenowSysUserQueryKey": "user_name",
+  "auth": {
+      "MAX_TOKEN_REFRESH_RETRIES": 20,
+      "provider": "keycloak",
+      "entraId": {
+          "clientId": "<Only if needed; otherwise ignore this section, since Keycloak is the default provider>",
+          "authority": "<>",
+          "redirectUri": "<>",
+          "postLogoutRedirectUri": "<>"
+      },
+      "keycloak": {
+          "url": "<Keycloak URL (with https) >",
+          "realm": "<Realm Name>",
+          "clientId": "<Frontend Client Name>",
+          "identityProvider": "keycloak",
+          "identityProviderAlias": ""
+      }
+  },
+  "accessControl": {
+      "pages": {
+          "gbac": {
+              "admin": "/Admin"
+          }
+      },
+      "features": {
+          "gbac": {
+                "mimAiPromptLibrary": "/Admin/Prompt_Library/mim_assist",
+                "problemAiPromptLibrary": "/Admin/Prompt_Library/problem_assist",
+                "changeAiPromptLibrary": "/Admin/Prompt_Library/change_assist",
+                "trainAiPromptLibrary": "/Admin/Prompt_Library/train_assist",
+                "knowledgeAiPromptLibrary": "/Admin/Prompt_Library/knowledge_assist",
+                "meetingAiPromptLibrary": "/Admin/Prompt_Library/meeting_assist",
+                "incidentAiPromptLibrary": "/Admin/Prompt_Library/incident_assist",
+                "adminPromptLibrary": "/Admin/Prompt_Library",
+                "adminItsmConnectors": "/Admin/ITSM_Connectors",
+                "adminLlmModels": "/Admin/LLM_Models",
+                "adminLiteLLMProxy": "/Admin/Lite_LLM_Proxy",
+                "adminAgentGateWay": "/Admin/Agent_Gateway",
+                "adminVault": "/Admin/Vault",
+                "adminFormManagement": "/Admin/Form_Management",
+                "adminSsoClient": "/Admin/SSO"
+      }
+  },
+  "externalLinks": {
+      "cloudAi": "<Cloud AI URL (with https)>",
+      "ticketAudit": "<Grafana URL (with https)>",
+      "callAudit": "<Grafana URL (with https)>",
+      "atkPulse": "<Grafana URL (with https)>"
+   },
+    "iframes": {
+        "agentGateway": "<Agent Gateway URL (with https://----/ui/)"
+    },
+    "hybridForms": {
+        "enableIncidentForm": false
+    }
+}

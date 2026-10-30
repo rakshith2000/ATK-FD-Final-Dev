@@ -1,0 +1,37 @@
+name: Auto Branch Creation and Scans
+# on:
+#   pull_request:
+#     types:
+#       - closed
+#     branches:
+#       - main
+
+on:     
+  workflow_dispatch:
+
+jobs:
+  create_branches_and_scan:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: main
+        token: ${{ secrets.PAT_TOKEN }}
+    
+    - name: Create and Push Branches
+      run: |
+        DATE=$(TZ='Asia/Kolkata' date +%d%b%y)
+        TIME=$(TZ='Asia/Kolkata' date +%H%M%S)
+        BRANCH_NAME="${DATE}_${TIME}"
+        
+        git checkout -b sast/${BRANCH_NAME}
+        git push origin sast/${BRANCH_NAME}
+        git checkout main
+        git checkout -b sonar/${BRANCH_NAME}
+        git push origin sonar/${BRANCH_NAME}
+        git checkout main
+        git checkout -b oss/${BRANCH_NAME}
+        git push origin oss/${BRANCH_NAME}

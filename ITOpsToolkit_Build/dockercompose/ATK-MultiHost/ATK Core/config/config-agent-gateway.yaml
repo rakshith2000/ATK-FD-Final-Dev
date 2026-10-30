@@ -1,0 +1,103 @@
+config:
+  logging:
+    database:
+      url: postgresql://fasteai_user:fasteai123User@atk-demo-eks-database.cluster-czc8wqu6i8i1.ap-south-1.rds.amazonaws.com:5432/fasteai
+frontendPolicies:
+  accessLog:
+    filter: has(llm.provider) || (has(mcp.methodName) && mcp.methodName == "tools/call")
+    add:
+      llm_provider: default(llm.provider, "")
+      llm_request_model: default(llm.requestModel, "")
+      llm_response_model: default(llm.responseModel, "")
+      llm_input_tokens: default(llm.inputTokens, 0)
+      llm_output_tokens: default(llm.outputTokens, 0)
+      llm_total_tokens: default(llm.totalTokens, 0)
+      cost: flatten(default(llm.cost, {}))
+      cost_rates: flatten(default(llm.costRates, {}))
+      mcp_method: default(mcp.methodName, "")
+      mcp_target: default(mcp.tool.target, "")
+      tool_name: default(mcp.tool.name, "")
+      tool_error: default(mcp.tool.error, "")
+llm:
+  port: 4000
+  models: []
+binds:
+- port: 3000
+  listeners:
+  - routes:
+    - backends:
+      - mcp:
+          targets:
+          - name: servicenowmcp
+            mcp:
+              host: http://backend:6000/mcp
+      policies:
+        cors:
+          allowOrigins:
+          - '*'
+          allowMethods:
+          - GET
+          - POST
+          - OPTIONS
+          - DELETE
+          allowHeaders:
+          - '*'
+          exposeHeaders:
+          - Mcp-Session-Id
+        backendAuth:
+          passthrough: {}
+        mcpAuthentication:
+          audiences:
+          - account
+          - integration-agentgateway
+          issuer: https://sso-atkdev.familydollar.com/auth/realms/AIOT
+          jwks:
+            url: https://sso-atkdev.familydollar.com/auth/realms/AIOT/protocol/openid-connect/certs
+          provider:
+            keycloak: {}
+          resourceMetadata:
+            resource: https://backend-atkdev.familydollar.com/mcp
+            scopesSupported:
+            - read:all
+            bearerMethodsSupported:
+            - header
+            - body
+        mcpAuthorization:
+          rules:
+          - mcp.tool.target == "servicenowmcp" && (jwt.groups.exists(g, g == "/Agentgateway-Admin") || jwt.groups.exists(g, g == "Agentgateway-Admin") || jwt.groups.exists(g, g == "/Admin") || jwt.groups.exists(g, g == "/Agentgateway-user"))
+mcp:
+  port: 443
+  statefulMode: stateful
+  prefixMode: conditional
+  failureMode: failOpen
+  policies:
+    cors:
+      allowOrigins:
+      - '*'
+      allowHeaders:
+      - '*'
+      - mcp-protocol-version
+      - mcp-session-id
+      - content-type
+      - cache-control
+      - authorization
+      exposeHeaders:
+      - Mcp-Session-Id
+  targets:
+  - name: devops
+    mcp:
+      host: https://devopsatkmcptools.com/mcp
+    policies:
+      backendAuth:
+        key:
+          value: <YOUR_DEVOPS_MCP_BACKEND_AUTH_KEY>
+          location:
+            header:
+              name: authorization
+              prefix: 'Bearer '
+  - name: jamf
+    mcp:
+      host: https://developer.jamf.com/mcp
+  - name: a
+    mcp:
+      host: http://localhost:8080/mcp

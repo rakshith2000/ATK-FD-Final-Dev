@@ -1,0 +1,17 @@
+<SSL Certificate Notes — CORE machine (10.106.6.15)>
+
+Place your wildcard *.fd.com certificate here as:
+  fullchain.pem
+  privkey.pem
+
+The same pair is mounted into the nginx container at /etc/nginx/ssl/ and is
+used by all three server blocks in config/nginx.conf:
+  sso-atkdev.fd.com
+  vault-atkdev.fd.com
+  backend-atkdev.fd.com
+
+The identical pair also goes in ../ATK-Frontend/ssl/ on 10.106.6.228 for
+atkdev.fd.com.
+
+If you later switch to per-hostname certificates, give each server block in
+config/nginx.conf its own ssl_certificate / ssl_certificate_key paths.

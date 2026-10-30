@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ticket-audit-backend
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: ticket-audit-backend
+    {{- include "ticket-audit.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      app: ticket-audit-backend
+  template:
+    metadata:
+      labels:
+        app: ticket-audit-backend
+    spec:
+      containers:
+        - name: backend
+          image: "{{ .Values.image.registry }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: ticket-audit-config
+            - secretRef:
+                name: ticket-audit-secret
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}

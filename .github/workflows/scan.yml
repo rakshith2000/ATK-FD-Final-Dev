@@ -1,0 +1,57 @@
+name: IP Ready Scans
+on: [push]
+
+jobs:
+  checkmarx_scan:
+    if: startsWith(github.ref, 'refs/heads/sast/')
+    name: SAST Scan
+    uses: CognizantCodeHub/IPReady_workflows/.github/workflows/checkmarx_scan.yml@Rel-1.0
+    with:
+      ProjectName: ${{ github.event.repository.name }}
+    secrets: inherit
+
+  blackduck_scan:
+    name: Blackduck Scan
+    if: startsWith(github.ref, 'refs/heads/oss/')
+    runs-on: codebuild-cdhb-ubuntu-cdbuild-${{ github.run_id }}-${{ github.run_attempt }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: ITOpsToolkit_Backend/requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ITOpsToolkit_Frontend/package-lock.json
+
+      - name: Install NPM dependencies
+        working-directory: ITOpsToolkit_Frontend
+        run: npm ci
+
+      - name: Install Python dependencies (uv)
+        run: |
+          python -m pip install --upgrade pip uv
+          uv pip install --system --no-cache -r ITOpsToolkit_Backend/requirements.txt
+
+      - name: Blackduck Scan
+        uses: CognizantCodeHub/IPReady_workflows/blackduck/generic@Rel-1.0
+        with:
+          ProjectName: ${{ github.event.repository.name }}
+          SYNOPSIS_URL: ${{ secrets.SYNOPSIS_URL }}
+          BLACKDUCK_URL: ${{ secrets.BLACKDUCK_URL }}
+          BLACKDUCK_TOKEN: ${{ secrets.BLACKDUCK_TOKEN }}
+          pdf: false
+
+  SonarQube_scan:
+    uses: CognizantCodeHub/IPReady_workflows/.github/workflows/sonarqube_generic_scan.yml@Rel-1.0
+    with:
+      ProjectName: ${{ github.event.repository.name }}
+    secrets: inherit

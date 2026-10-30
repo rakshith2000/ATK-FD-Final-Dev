@@ -1,0 +1,16 @@
+# Backend -> Keycloak connection.
+#
+# KEYCLOAK_URL stays on the internal Docker network: the backend and Keycloak
+# are in the same compose project on 10.106.6.15, and the backend validates
+# tokens by calling Keycloak's introspection endpoint server-to-server. It
+# never needs the public sso-atkdev.fd.com name (and using it would force the
+# traffic back out through nginx for no reason).
+KEYCLOAK_URL=http://keycloak:8080/auth
+
+# Public URL users are sent back to after login — this is the FRONTEND host on
+# the other machine (10.106.6.228), NOT this one.
+KEYCLOAK_REDIRECTION_URL=https://autonomousitopstoolkitdev.familydollar.com
+
+REALM_NAME=AIOT
+CLIENT_ID=aiot-backend
+CLIENT_SECRET=OBvoiKFyCg4lL2Ttjcgn6tbPOnwGszbcec71OIgvp5U9w3qHgGvduBZEigr8SORT42IoA4pUgZplqKpxAT5FBA

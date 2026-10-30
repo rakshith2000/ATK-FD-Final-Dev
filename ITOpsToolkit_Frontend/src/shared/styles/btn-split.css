@@ -1,0 +1,156 @@
+.btn-split {
+    position: relative;
+    border: 1px solid transparent;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.btn-split span {
+    position: relative;
+    z-index: 2;
+}
+
+.btn-split::before {
+    content: '';
+    position: absolute;
+    left: -100%;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    transition: left 0.35s ease;
+    z-index: 1;
+}
+
+.btn-split:hover::before {
+    left: 0;
+}
+
+@property --spin-angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
+}
+
+@keyframes spin-gradients {
+    0% {
+        --spin-angle: 0deg;
+    }
+    100% {
+        --spin-angle: 360deg;
+    }
+}
+
+/* Variants */
+
+/* Blue */
+.split-blue {
+    color: #fff;
+    background:
+        linear-gradient(#3b62cc, #3b62cc) padding-box,
+        linear-gradient(#60a5fa, #60a5fa) border-box;
+}
+
+.split-blue::before {
+    background: linear-gradient(90deg, #60a5fa, #2563eb);
+}
+
+/* Blue-light */
+.split-blue-light {
+    color: #fff;
+
+    background:
+        linear-gradient(289deg, #4c97f4, #3b62cc) padding-box,
+        linear-gradient(334deg, #60a5fa59, #2564eb40) border-box;
+}
+
+.split-blue-light::before {
+    background: linear-gradient(#3b62cc, #3b62cc);
+}
+
+/* White-Blue-light */
+.split-white-blue-light {
+    color: #3b62cc;
+    background:
+        linear-gradient(289deg, #ffffff, #ffffff) padding-box,
+        linear-gradient(334deg, #60a5fa59, #2564eb40) border-box;
+}
+
+.split-white-blue-light:hover {
+    color: #fff;
+}
+
+.split-white-blue-light::before {
+    background:
+        linear-gradient(289deg, #4c97f4, #3b62cc) padding-box,
+        linear-gradient(334deg, #60a5fa59, #2564eb40) border-box;
+}
+
+/* Success */
+.split-success {
+    color: #fff;
+    background:
+        linear-gradient(#28b573, #25a251) padding-box,
+        linear-gradient(#3ca774, #3ca98a) border-box;
+}
+
+.split-success::before {
+    background: linear-gradient(90deg, #22af6d, #17ba79);
+}
+
+/* neutral */
+.split-slate {
+    color: #5e5a5aca;
+    background:
+        linear-gradient(#b1afafbd, rgb(164, 164, 164) bd) padding-box,
+        linear-gradient(#898a8ab7, #898888b0) border-box;
+}
+
+.split-slate::before {
+    background: linear-gradient(90deg, #8c8d8d, #8c8d8d);
+}
+
+/* Green */
+.split-green {
+    color: #fff;
+    background:
+        linear-gradient(#2f98ab, #2f98ab) padding-box,
+        linear-gradient(#5abbc0, #5abbc0) border-box;
+}
+
+.split-green::before {
+    background: linear-gradient(90deg, #5abbc0, #156469);
+}
+
+/* Green-light */
+.split-green-light {
+    color: #fff;
+    animation: spin-gradients 4s linear infinite;
+
+    background:
+        linear-gradient(calc(var(--spin-angle) + 289deg), #5abbc0, #2f98ab) padding-box,
+        linear-gradient(calc(var(--spin-angle) + 334deg), rgba(121, 225, 228, 0.35), rgba(21, 100, 105, 0.25)) border-box;
+}
+
+.split-green-light::before {
+    background: linear-gradient(#2f98ab, #2f98ab);
+}
+
+/* White-Green-light */
+.split-white-green-light {
+    color: #2f98ab;
+    animation: spin-gradients 4s linear infinite;
+
+    background:
+        linear-gradient(calc(var(--spin-angle) + 289deg), #ffffff, #ffffff) padding-box,
+        linear-gradient(calc(var(--spin-angle) + 334deg), rgba(121, 225, 228, 0.35), rgba(21, 100, 105, 0.25)) border-box;
+}
+
+.split-white-green-light:hover {
+    color: #fff;
+}
+
+.split-white-green-light::before {
+    background:
+        linear-gradient(calc(var(--spin-angle) + 289deg), #5abbc0, #2f98ab) padding-box,
+        linear-gradient(calc(var(--spin-angle) + 334deg), rgba(121, 225, 228, 0.35), rgba(21, 100, 105, 0.25)) border-box;
+}

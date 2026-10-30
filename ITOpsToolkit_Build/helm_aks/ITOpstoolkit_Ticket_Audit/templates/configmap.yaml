@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ticket-audit-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "ticket-audit.labels" . | nindent 4 }}
+data:
+  PGDB_HOST: {{ .Values.postgresql.host | quote }}
+  PGDB_PORT: {{ .Values.postgresql.port | quote }}
+  PGDB_NAME: {{ .Values.postgresql.database | quote }}
+  SNOW_URL: {{ .Values.servicenow.url | quote }}
+  SNOW_TAG: {{ .Values.servicenow.tag | quote }}
+  MODEL: {{ .Values.llm.model | quote }}
+  BASE_URL: {{ .Values.llm.baseUrl | quote }}
+  API_TYPE: {{ .Values.llm.apiType | quote }}
+  AZ_API_VERSION: {{ .Values.llm.apiVersion | quote }}
+  API_VERSION: {{ .Values.general.apiVersion | quote }}
+  VECTOR_DIM: {{ .Values.general.vectorDim | quote }}
+  CUSTOMER_NAME: {{ .Values.general.customerName | quote }}

@@ -1,0 +1,13 @@
+/usr/lib/python3.13/site-packages/llm_guard/util.py:226: SyntaxWarning: invalid escape sequence '\*'
+  if "([^\*]+)" in pattern:
+postgresql+psycopg2://itops_user:Password-1@10.106.6.16:5432/itopstoolkit_maf_db
+Traceback (most recent call last):
+  File "/app/modules/mim_assist/utils/app.py", line 33, in <module>
+    ADAPTER = CloudAdapter(ConfigurationBotFrameworkAuthentication(CONFIG))
+                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/usr/lib/python3.13/site-packages/botbuilder/integration/aiohttp/configuration_bot_framework_authentication.py", line 57, in __init__
+    else ConfigurationServiceClientCredentialFactory(configuration)
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/site-packages/botbuilder/integration/aiohttp/configuration_service_client_credential_factory.py", line 58, in __init__
+    raise Exception("Property 'APP_ID' is expected in configuration object")
+Exception: Property 'APP_ID' is expected in configuration object

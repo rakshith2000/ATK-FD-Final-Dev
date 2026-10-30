@@ -1,0 +1,70 @@
+replicaCount: 1
+
+image:
+  repository: <ACR-ARN>/<repo-name> 
+  pullPolicy: Always
+  tag: "<tag>"
+
+#############For AGIC use###############
+ingress:
+  className: "azure-application-gateway"
+  uiPort: 19000
+  api:
+    annotations:
+      appgw.ingress.kubernetes.io/backend-protocol: "http"
+      appgw.ingress.kubernetes.io/health-probe-status-codes: "200-399"
+      appgw.ingress.kubernetes.io/health-probe-port: "<port>" #19000
+      appgw.ingress.kubernetes.io/health-probe-path: "/ui"
+      appgw.ingress.kubernetes.io/request-timeout: "300" 
+      appgw.ingress.kubernetes.io/ssl-redirect: "true"
+      #appgw.ingress.kubernetes.io/cookie-based-affinity: "true"
+
+nameOverride: "itops-agent-gateway-ui"
+fullnameOverride: "itops-platform-agent-gateway-ui"
+
+
+service:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 19000
+      targetPort: 19000
+
+host:
+  name: "< DNS name >" #without https
+
+# Below secret is for SSL certtificates. Remove this if its not needed 
+secret:
+  name: "<K8s secret name>"
+
+# Uncomment this only if the image is getting pulled from JFrog directly via helms 
+# jfrogSecret:
+#   name: <secret-name>
+
+nodeSelector:
+  <label-key>: <label-value>
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+
+probes:
+  liveness:
+    enabled: false
+  readiness:
+    enabled: false
+    
+env:
+  - name: ENGINE_ADMIN_UPSTREAM
+    value: "<Agent Gateway Engine service URL>" #itops-platform-itops-agent-gateway-engine:15000
+  - name: KEYCLOAK_URL
+    value: "<Keycloak URL>" #https://<DNS>/auth
+  - name: KEYCLOAK_REALM
+    value: "<Keycloak REALM>"
+  - name: KEYCLOAK_CLIENT_ID
+    value: "Keycloak Client Name" 

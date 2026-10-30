@@ -1,0 +1,5 @@
+cd ITOpsToolkit_Frontend
+npm run test
+npm run lint:check
+npm run prettier:check
+npm run build

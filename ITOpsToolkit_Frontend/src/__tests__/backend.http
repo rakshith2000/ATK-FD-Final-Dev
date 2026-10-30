@@ -1,0 +1,3 @@
+GET https://qa.autonomousitopstoolkit.com/api/knowledge_assist/api/v1/find_duplicate_knowledge_articles/
+Authorization: Bearer <PASTE_TOKEN_HERE>
+Accept: application/json

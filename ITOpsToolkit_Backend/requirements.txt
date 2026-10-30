@@ -1,0 +1,128 @@
+# Email validator for pydantic
+email-validator
+
+# Password Hashing Mechanisms
+passlib
+
+# Data structures
+PyYAML
+
+#Microsoft Agent Framework
+agent-framework
+
+# LLM Wrapper for Multi LLM support
+litellm>=1.80.0
+
+#Sentence transformers
+sentence_transformers
+langchain_huggingface
+
+# SQLAlchemy for database generalization
+asyncpg
+databases
+SQLAlchemy
+
+# PostgreSQL database connector
+pgvector
+psycopg2-binary
+
+# Vault specific packages
+# Hashicorp vault
+hvac
+
+# AWS vault
+boto3
+
+# Azure vault
+azure-identity
+azure-keyvault-secrets
+
+# MS Teams azure app access specific
+msal
+
+# Google cloud secret manager
+google-api-python-client
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-cloud-secret-manager
+
+# API interface - FastAPI
+fastapi[all]
+uvicorn
+
+# MCP server specific
+fastmcp
+langchain-mcp-adapters
+mcp>=1.28.1,<2
+
+# Opentelemetry
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-instrumentation
+opentelemetry-distro
+opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-exporter-otlp-proto-http
+opentelemetry-instrumentation-asyncio
+opentelemetry-instrumentation-dbapi
+opentelemetry-instrumentation-logging
+opentelemetry-instrumentation-sqlite3
+opentelemetry-instrumentation-threading
+opentelemetry-instrumentation-urllib
+opentelemetry-instrumentation-wsgi
+opentelemetry-instrumentation-openai-v2
+opentelemetry-instrumentation-vertexai
+opentelemetry-instrumentation-aiohttp-client
+opentelemetry-instrumentation-aiohttp-server
+opentelemetry-instrumentation-asyncpg
+opentelemetry-instrumentation-boto3sqs
+opentelemetry-instrumentation-botocore
+opentelemetry-instrumentation-click
+opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-grpc
+opentelemetry-instrumentation-httpx
+opentelemetry-instrumentation-jinja2
+opentelemetry-instrumentation-psycopg2
+opentelemetry-instrumentation-requests
+opentelemetry-instrumentation-sqlalchemy
+opentelemetry-instrumentation-starlette
+opentelemetry-instrumentation-tortoiseorm
+opentelemetry-instrumentation-urllib3
+
+# For multi-threading
+gunicorn
+
+# HTML parsing
+beautifulsoup4
+lxml
+
+# LangChain 
+langchain>=0.3.3
+langchain-community>=0.3.2
+langchain-core>=0.3.28
+langchain-classic
+
+# RCA document generation
+python-docx>=1.1.2
+
+# Attachment reading (PDF, Word, Email, Excel)
+pypdf
+docx2txt
+extract-msg
+openpyxl
+docling
+
+pandas
+teams-ai==1.8.2
+botbuilder-integration-aiohttp>=4.15.0
+twilio
+
+# LLM Guard - pinned to >=0.3.16 for Gibberish scanner support
+llm-guard>=0.3.16
+spacy>=3.7,<4.0
+
+pydantic>=2.11.10
+ 
+# Image Conversion
+pillow
+cairosvg

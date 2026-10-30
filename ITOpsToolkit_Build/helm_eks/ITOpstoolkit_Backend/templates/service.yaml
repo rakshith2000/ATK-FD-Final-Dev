@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "itops-backend.fullname" . }}
+  labels:
+    {{- include "itops-backend.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}
+      protocol: TCP
+      name: https
+    {{- if .Values.service.mcpPort}}
+    - port: {{ .Values.service.mcpPort }}
+      targetPort: {{ .Values.service.mcpPort }}
+      protocol: TCP
+      name: mcp
+    {{- end }}
+    {{- if .Values.service.mimPort}}
+    - port: {{ .Values.service.mimPort }}
+      targetPort: {{ .Values.service.mimPort }}
+      protocol: TCP
+      name: mim
+    {{- end }}
+  selector:
+    {{- include "itops-backend.selectorLabels" . | nindent 4 }}

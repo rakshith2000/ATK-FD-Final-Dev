@@ -1,0 +1,4 @@
+general_settings:
+  # "postgres" is the compose service on this same machine (10.106.6.15).
+  # [B] EXISTING POSTGRES? Replace "postgres" with your DB host/IP.
+  database_url: "postgresql://litellm_user:litellm@123@10.106.6.16:5432/litellm_db"

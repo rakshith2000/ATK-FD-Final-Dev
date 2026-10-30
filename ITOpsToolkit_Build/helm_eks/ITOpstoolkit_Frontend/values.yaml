@@ -1,0 +1,110 @@
+replicaCount: 1
+
+
+###########The Below Section is to declare Configmaps ###############
+configMaps:
+  - name: nginx
+  - name: public
+  - name: license
+  # Additional configmaps can be in the format above (No need to mention app-config.json because, its been taken care in configmap.yaml)
+
+###########The Below Section is for Volume Mounts ###############
+copyFiles:
+  - name: nginx
+    modifiedFileName: nginx.conf
+    source: /override/nginx.conf
+    destination: /etc/nginx/nginx.conf
+  - name: public
+    modifiedFileName: public.pem
+    source: /override2/public.pem
+    destination: /app/public.pem
+  - name: license
+    modifiedFileName: license.txt
+    source: /override3/license.txt
+    destination: /app/public/license.txt
+  # Additional files can be mounted by adding entries in the format above
+###############################################################
+
+###########For Nginx Ingress Controller########
+# ingress:
+#   className: "nginx"
+#   annotations: {}
+################################################    
+
+# ############AWS Load Balancer Ingress########## #uncomment as per requirement
+ingress:
+  className: "alb"
+  annotations:
+    alb.ingress.kubernetes.io/group.name: atk-group #This group name can be any name. Try to use the same name for all ATK components to avoid multiple LB creations
+    alb.ingress.kubernetes.io/scheme: internal     #<internet-facing> for internet facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/healthcheck-port: '<port>' #80
+    alb.ingress.kubernetes.io/group.order: "100" #more than backend and keycloak     
+    alb.ingress.kubernetes.io/success-codes: "200-399"    
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+#     alb.ingress.kubernetes.io/certificate-arn: <ACM ARN>  #Uncomment this line and remove 'secret' block only if ACM is being used for DNS certificates
+# ###############################################
+
+image:
+  repository: <ECR ARN>/<Repo Name>
+  pullPolicy: Always
+  tag: "<Tag>"
+
+nameOverride: "itops-frontend"
+fullnameOverride: "itops-platform-itops-frontend"
+
+service:
+  type: ClusterIP
+  port: <Frontend port> #80
+  targetPort: <Frontend port> #80
+host:
+  name: "<DNS Name>" #without https
+
+# Below secret is for SSL certtificates. Remove this if its not needed 
+secret:
+  name: "<K8s secret name>"
+
+# Uncomment this only if the image is getting pulled from JFrog directly via helms 
+# jfrogSecret:
+#   name: <secret-name>
+
+
+nodeSelector:
+  <label-key>: <label-value>
+
+#Probes can be disabled by setting 'false' for the below fields
+probes:
+  liveness:
+    enabled: true
+    path: /
+  readiness:
+    enabled: true
+    path: /
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+autoscaling:
+  enabled: false
+
+env:
+  - name: VITE_APP_PIPELINE_STAGE
+    value: "<>" #production 
+  - name: VITE_APP_BASE_PATH
+    value: "/"
+  - name: VITE_ENABLE_DOCS_PAGE
+    value: "<>" #true/false -> Debugging purpose
+  - name: VITE_ENABLE_DEV_SPACE_PAGE
+    value: "<>" #true/false -> Debugging purpose
+  - name: VITE_ENABLE_SITE_MAP_PAGE
+    value: "<>" #true/false -> Debugging purpose
+  - name: VITE_INCLUDE_DEVTOOLS_IN_BUILD
+    value: "<>" #true/false -> Debugging purpose
+

@@ -1,0 +1,115 @@
+replicaCount: 1
+
+################# This is for Keycloak custom theme #################
+# copyFiles:
+#   - name: <configmap-name>
+#     destinationPath: /opt/keycloak/themes/<destination-path>/<modified-filename>
+#     fileName: <modified-filename>
+   ### Examples ### 
+#   - name: logo
+#     destinationPath: /opt/keycloak/themes/atk-theme/login/resources/img/logo.png
+#     fileName: logo.png
+#   - name: template 
+#     destinationPath: /opt/keycloak/themes/atk-theme/login/template.ftl
+#     fileName: template.ftl #Content/text can be modified eg. block start from line no. 112
+
+
+image:
+  repository: <ECR ARN>/<repo name>
+  pullPolicy: Always
+  tag: "<Tag>"
+
+###########For Nginx Ingress Controller########
+# ingress:
+#   className: "nginx"
+#   annotations: {}
+################################################    
+
+# ############AWS Load Balancer Ingress########## #uncomment as per requirement
+ingress:
+  className: "alb"
+  annotations:
+    alb.ingress.kubernetes.io/group.name: atk-group #This group name can be any name. Try to use the same name for all ATK components to avoid multiple LB creations
+    alb.ingress.kubernetes.io/scheme: internal     #<internet-facing> for internet facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /auth
+    alb.ingress.kubernetes.io/healthcheck-port: '<port>' #8080
+    alb.ingress.kubernetes.io/group.order: "1"
+    alb.ingress.kubernetes.io/success-codes: "200-399"    
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+#     alb.ingress.kubernetes.io/certificate-arn: <ACM ARN>  #Uncomment this line and remove 'secret' block only if ACM is being used for DNS certificates
+# ###############################################
+
+nameOverride: "itops-keycloak"
+fullnameOverride: "itops-platform-itops-keycloak"
+
+# you can comment the nodeSelector if its not used(Keycloak should be built on the node where frontend should be built)
+nodeSelector:
+  <label-key>: <label-value>
+
+service:
+  type: ClusterIP
+  port: <Keycloak port> #8080
+  targetPort: <Keycloak port> #8080
+  readinessPort: 9000
+
+host:
+  name: "<DNS Name>" # without DNS
+
+# Below secret is for SSL certtificates. Remove this if its not needed 
+secret:
+  name: "<K8s secret name>"
+
+# Uncomment this only if the image is getting pulled from JFrog directly via helms 
+# jfrogSecret:
+#   name: <secret-name>
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+#Probes can be disabled by setting 'false' for the below fields
+probes:
+  startup:
+    enabled: true
+    path: /auth/health/started
+  liveness:
+    enabled: true
+    path: /auth/health/live
+  readiness:
+    enabled: true
+    path: /auth/health/ready
+    port: health
+
+env:
+  - name: KEYCLOAK_ADMIN
+    value: "<Admin Name>"
+  - name: KEYCLOAK_ADMIN_PASSWORD
+    value: "<Admin Password>"
+  - name: KC_FEATURES
+    value: "token-exchange"
+  - name: KC_PROXY_HEADERS
+    value: "xforwarded"
+  - name: KC_HOSTNAME_STRICT
+    value: "false"
+  - name: KC_DB
+    value: "postgres"
+  - name: KC_DB_URL
+    value: "jdbc:postgresql://<DB URL>:5432/<Keycloak DB Name>?sslmode=require"
+  - name: KC_DB_USERNAME
+    value: "<kecloak DB username>" 
+  - name: KC_DB_PASSWORD
+    value: "<kecloak DB password>"
+  - name: KC_HOSTNAME
+    value: "<DNS Name>" # https://<DNS>/auth
+  - name: KC_HTTP_RELATIVE_PATH
+    value: "<URL relative path>" #/auth
+  - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
+    value: "false"
+  - name: KC_HEALTH_ENABLED
+    value: "true"

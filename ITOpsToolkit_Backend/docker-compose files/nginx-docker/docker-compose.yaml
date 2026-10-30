@@ -1,0 +1,23 @@
+# Docker Compose for Nginx reverse proxy
+# Routes multiple domains to different backend services with SSL
+
+services:
+  nginx:
+    image: nginx:latest
+    container_name: nginx_proxy
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      - /etc/nginx-docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /etc/certs/:/etc/nginx/certs/:ro
+
+    # Verify config is valid before starting
+    command: nginx -g 'daemon off;'
+
+    restart: unless-stopped              # Auto-restart unless manually stopped
+
+    # Connect to same network as backend services
+    network_mode: host                   # Use host network to reach 0.0.0.0 backend ports

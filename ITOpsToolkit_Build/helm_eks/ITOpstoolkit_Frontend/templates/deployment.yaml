@@ -1,0 +1,143 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "itops-frontend.fullname" . }}
+  labels:
+    {{- include "itops-frontend.labels" . | nindent 4 }}
+
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+
+  selector:
+    matchLabels:
+      {{- include "itops-frontend.selectorLabels" . | nindent 6 }}
+
+  template:
+    metadata:
+      labels:
+        {{- include "itops-frontend.selectorLabels" . | nindent 8 }}
+
+    spec:
+      {{- if .Values.jfrogSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.jfrogSecret.name }}
+      {{- end }}
+      {{- if .Values.copyFiles }}
+      initContainers:
+        - name: build-react
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          {{- if .Values.env}}
+          env:
+            {{- toYaml .Values.env | nindent 12 }}
+          {{- end }}
+          command:
+            - sh
+            - -c
+            - |
+              echo "Applying overrides..."
+
+              {{- if .Values.copyFiles }}
+              {{- range .Values.copyFiles }}
+              echo "Copying {{ .source }} to {{ .destination }}"
+              cp {{ .source }} "{{ .destination }}"
+              {{- end }}
+              {{- end }}
+              cd /app
+
+              echo "Building..."
+              GENERATE_SOURCEMAP=false NODE_OPTIONS=--max-old-space-size=4096 npm run build
+
+              cp -r dist/* /shared/
+
+          volumeMounts:
+            - name: shared-volume
+              mountPath: /shared
+
+            {{- if .Values.copyFiles }}
+            {{- range .Values.copyFiles }}
+            {{- if ne .name "nginx" }}
+
+            - name: {{ .name }}
+              mountPath: {{ .source }}
+              subPath: {{ .modifiedFileName }}
+            {{- end }}
+            {{- end }}
+            {{- end}}
+      {{- end }}
+
+      containers:
+        - name: {{ .Chart.Name }}
+          image: nginx:alpine
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          {{- end }}
+
+          volumeMounts:
+            - name: config-volume
+              mountPath: /usr/share/nginx/html/app-config.json
+              subPath: app-config.json
+
+            - name: shared-volume
+              mountPath: /usr/share/nginx/html
+
+            {{- if .Values.copyFiles }}
+            {{- range .Values.copyFiles }}
+            {{- if eq .name "nginx" }}
+            - name: {{ .name }}
+              mountPath: {{ .destination }}
+              subPath: {{ .modifiedFileName }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ include "itops-frontend.fullname" . }}-config
+
+        - name: shared-volume
+          emptyDir: {}
+
+
+        {{- if .Values.configMaps }}
+        {{- range .Values.configMaps }}
+
+        - name: {{ .name }}
+          configMap:
+            name: {{ .name }}
+        {{- end }}
+        {{- end }}
+
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}

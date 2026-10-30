@@ -1,0 +1,48 @@
+binds:
+  - port: 3000
+    listeners:
+      - routes:
+          - backends:
+              - mcp:
+                  targets:
+                    - name: "servicenowmcp"
+                      mcp:
+                        host: <Backend cluster service URL>.<Namespace>.svc.cluster.local:6000/mcp #Example -> http://itops-platform-itops-backend.itops.svc.cluster.local:6000/mcp
+            policies:   
+              cors:
+                allowOrigins:
+                  - '*'
+                allowMethods:
+                  - GET
+                  - POST
+                  - OPTIONS
+                  - DELETE
+                allowHeaders:
+                  - '*'
+                exposeHeaders:
+                  - Mcp-Session-Id
+              backendAuth:
+                passthrough: {}
+
+
+              mcpAuthentication:
+                audiences:
+                  - account
+                  - <Keycloak client ID>
+                issuer: <Keycloak URL>/realms/<Realm>
+                jwks:
+                  url: <Keycloak URL>/realms/<Realm>/protocol/openid-connect/certs
+                provider:
+                  keycloak: {}
+                resourceMetadata:
+                  resource: <Agent Gateway cluster service URL>.<Namespace>.svc.cluster.local:3000/mcp #Example -> http://itops-platform-agent-gateway.integration.svc.cluster.local:3000/mcp
+                  scopesSupported:
+                    - read:all
+                  bearerMethodsSupported:
+                    - header
+                    - body
+
+              mcpAuthorization:
+                rules:
+                  - 'mcp.tool.target == "servicenowmcp" && (jwt.groups.exists(g, g == "<Keycloak Admin Group1 Name for Agent Gateway>") || jwt.groups.exists(g, g == "<Keycloak Admin Group2 Name for Agent Gateway>"))'
+                  #'mcp.tool.target == "servicenowmcp" && (jwt.groups.exists(g, g == "/Agentgateway-user") || jwt.groups.exists(g, g == "/Admin/ServiceNow-MCP-Admin"))'

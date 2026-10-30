@@ -1,0 +1,71 @@
+replicaCount: 1
+image:
+  repository: atkcontainerhub.jfrog.io/maf-qa-atk/qa_atk_maf/qa_atk_agentgateway_ui_dev_2.0.0.002
+  pullPolicy: Always
+  tag: "<Tag>"
+
+ingress:
+  className: "alb"
+  uiPort: 19000
+  annotations:
+    alb.ingress.kubernetes.io/group.name: atk-group #This group name can be any name. Try to use the same name for all ATK components to avoid multiple LB creations
+    alb.ingress.kubernetes.io/scheme: internet-facing     #<internet-facing> for internet facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-port: "19000"
+    alb.ingress.kubernetes.io/healthcheck-path: /ui
+    alb.ingress.kubernetes.io/success-codes: "200-399"
+    alb.ingress.kubernetes.io/group.order: "0"
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    #alb.ingress.kubernetes.io/certificate-arn: <ACM ARN>  #Uncomment this line and remove 'secret' block only if ACM is being used for DNS certificates
+
+    
+nameOverride: "itops-agent-gateway-ui"
+fullnameOverride: "itops-platform-agent-gateway-ui"
+
+
+service:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 19000
+      targetPort: 19000
+
+host:
+  name: "< DNS name >" #without https
+
+# Below secret is for SSL certtificates. Remove this if its not needed 
+secret:
+  name: "<K8s secret name>"
+
+# Uncomment this only if the image is getting pulled from JFrog directly via helms 
+# jfrogSecret:
+#   name: <secret-name>
+
+nodeSelector:
+  <label-key>: <label-value>
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+
+probes:
+  liveness:
+    enabled: false
+  readiness:
+    enabled: false
+    
+env:
+  - name: ENGINE_ADMIN_UPSTREAM
+    value: "<Agent Gateway Engine service URL>" #itops-platform-itops-agent-gateway-engine:15000
+  - name: KEYCLOAK_URL
+    value: "<Keycloak URL>" #https://<DNS>/auth
+  - name: KEYCLOAK_REALM
+    value: "<Keycloak REALM>"
+  - name: KEYCLOAK_CLIENT_ID
+    value: "Keycloak Client Name" 

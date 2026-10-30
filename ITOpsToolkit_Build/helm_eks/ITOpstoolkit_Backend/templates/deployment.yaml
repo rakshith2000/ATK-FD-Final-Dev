@@ -1,0 +1,346 @@
+{{- if false }}
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: {{ include "itops-backend.fullname" . }}
+    labels:
+      {{- include "itops-backend.labels" . | nindent 4 }}
+  spec:
+    {{- if not .Values.autoscaling.enabled }}
+    replicas: {{ .Values.replicaCount }}
+    {{- end }}
+    selector:
+      matchLabels:
+        {{- include "itops-backend.selectorLabels" . | nindent 6 }}
+    template:
+      metadata:
+        labels:
+          {{- include "itops-backend.selectorLabels" . | nindent 8 }}
+      spec:
+        {{- if .Values.serviceAccount }}
+        serviceAccountName: {{ .Values.serviceAccount.name }}
+        {{- end }}
+        {{- if .Values.jfrogSecret }}
+        imagePullSecrets:
+          - name: {{ .Values.jfrogSecret.name }}
+        {{- end }}
+  
+        {{- if .Values.pvc.enabled }}
+        initContainers:
+          - name: pvc-for-system-prompts
+            image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+            imagePullPolicy: {{ .Values.image.pullPolicy }}
+            command:
+              - sh
+              - -c
+              - |
+                echo "Seeding shared files to PVC..."
+                {{- range .Values.pvc.sharedFiles }}
+                if [ ! -f /shared/{{ .pvcName }} ]; then
+                  echo "Copying {{ .mountPath }}/{{ .fileName }} → /shared/{{ .pvcName }}"
+                  cp {{ .mountPath }}/{{ .fileName }} /shared/{{ .pvcName }}
+                else
+                  echo "{{ .pvcName }} already exists. Skipping."
+                fi
+                {{- end }}
+                echo "Seeding complete."
+            volumeMounts:
+              - name: shared-storage
+                mountPath: /shared
+        {{- end }}
+  
+        containers:
+          - name: {{ .Chart.Name }}
+            image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+            imagePullPolicy: {{ .Values.image.pullPolicy }}
+            ########################
+            # command: ["tail"]
+            # args: ["-f", "/dev/null"]
+            ########################
+            ports:
+              - name: http
+                containerPort: {{ .Values.service.targetPort }}
+                protocol: TCP
+              - name: mcp
+                containerPort: {{ .Values.service.mcpPort }}
+                protocol: TCP
+              - name: mim
+                containerPort: {{ .Values.service.mimPort }}
+                protocol: TCP
+            {{- if .Values.probes.startup.enabled }}
+            startupProbe:
+              httpGet:
+                path: {{ .Values.probes.startup.path }}
+                port: {{ .Values.service.targetPort }}
+              initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds | default 10 }}
+              periodSeconds: {{ .Values.probes.startup.periodSeconds | default 10 }}
+              timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds | default 5 }}
+              failureThreshold: {{ .Values.probes.startup.failureThreshold | default 60 }}
+            {{- end }}
+            {{- if .Values.probes.liveness.enabled }}
+            livenessProbe:
+              httpGet:
+                path: {{ .Values.probes.liveness.path }}
+                port: {{ .Values.service.targetPort }}
+              initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds | default 10 }}
+              periodSeconds: {{ .Values.probes.liveness.periodSeconds | default 15 }}
+              timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds | default 5 }}
+              failureThreshold: {{ .Values.probes.liveness.failureThreshold | default 5 }}
+            {{- end }}
+            {{- if .Values.probes.readiness.enabled }}
+            readinessProbe:
+              httpGet:
+                path: {{ .Values.probes.readiness.path }}
+                port: {{ .Values.service.targetPort }}
+              initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds | default 5 }}
+              periodSeconds: {{ .Values.probes.readiness.periodSeconds | default 10 }}
+              timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds | default 5 }}
+              failureThreshold: {{ .Values.probes.readiness.failureThreshold | default 3 }}
+            {{- end }}
+            envFrom:
+              - configMapRef:
+                  name: {{ include "itops-backend.fullname" . }}-config
+            env:
+              {{- toYaml .Values.env | nindent 12 }}
+            {{- if or .Values.configMaps .Values.keycloakSecret.enabled .Values.itsmSecret.enabled .Values.pvc.enabled }}
+            volumeMounts:
+              {{- if .Values.configMaps }}
+              {{- range .Values.configMaps }}
+              - name: {{ .name }}
+                mountPath: {{ .destinationPath }}
+                subPath: {{ .fileName }}
+              {{- end }}
+              {{- end }}
+              {{- if .Values.keycloakSecret.enabled }}
+              - name: keycloak-secret-vol
+                mountPath: {{ .Values.keycloakSecret.mountPath }}/{{ .Values.keycloakSecret.fileName }}
+                subPath: {{ .Values.keycloakSecret.fileName }}
+                readOnly: true
+              {{- end }}
+              {{- if .Values.itsmSecret.enabled }}
+              - name: itsm-secret-vol
+                mountPath: {{ .Values.itsmSecret.mountPath }}/{{ .Values.itsmSecret.fileName }}
+                subPath: {{ .Values.itsmSecret.fileName }}
+                readOnly: true
+              {{- end }}
+              {{- if .Values.pvc.enabled }}
+              {{- range .Values.pvc.sharedFiles }}
+              - name: shared-storage
+                mountPath: {{ .mountPath }}/{{ .fileName }}
+                subPath: {{ .pvcName }}
+              {{- end }}
+              {{- end }}
+            {{- end }}
+            resources:
+              {{- toYaml .Values.resources | nindent 12 }}
+        {{- if or .Values.configMaps .Values.keycloakSecret.enabled .Values.itsmSecret.enabled .Values.pvc.enabled }}
+        volumes:
+          {{- if .Values.configMaps }}
+          {{- range .Values.configMaps }}
+          - name: {{ .name }}
+            configMap:
+              name: {{ .name }}
+          {{- end }}
+          {{- end }}
+          {{- if .Values.keycloakSecret.enabled }}
+          - name: keycloak-secret-vol
+            secret:
+              secretName: keycloak-secret
+          {{- end }}
+          {{- if .Values.itsmSecret.enabled }}
+          - name: itsm-secret-vol
+            secret:
+              secretName: itsm-secret
+          {{- end }}
+          {{- if .Values.pvc.enabled }}
+          - name: shared-storage
+            persistentVolumeClaim:
+              claimName: {{ include "itops-backend.fullname" . }}-pvc
+          {{- end }}
+        {{- end }}
+        {{- if .Values.nodeSelector }}
+        nodeSelector:
+          {{- toYaml .Values.nodeSelector | nindent 8 }}
+        {{- end }}
+        {{- if .Values.tolerations }}
+        tolerations:
+          {{- toYaml .Values.tolerations | nindent 8 }}
+        {{- end }}
+        {{- if .Values.affinity }}
+        affinity:
+          {{- toYaml .Values.affinity | nindent 8 }}
+        {{- end }}
+{{- end }}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "itops-backend.fullname" . }}
+  labels:
+    {{- include "itops-backend.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "itops-backend.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "itops-backend.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- if .Values.serviceAccount }}
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- end }}
+      {{- if .Values.jfrogSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.jfrogSecret.name }}
+      {{- end }}
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      {{- if .Values.pvc.enabled }}
+      initContainers:
+        - name: pvc-for-system-prompts
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - python
+            - -c
+            - |
+              import os, shutil
+              print("Seeding shared files to PVC...")
+              {{- range .Values.pvc.sharedFiles }}
+              src = "{{ .mountPath }}/{{ .fileName }}"
+              dst = "/shared/{{ .pvcName }}"
+              if not os.path.exists(dst):
+                  print(f"Copying {src} -> {dst}")
+                  shutil.copy(src, dst)
+              else:
+                  print("{{ .pvcName }} already exists. Skipping.")
+              {{- end }}
+              print("Seeding complete.")
+          volumeMounts:
+            - name: shared-storage
+              mountPath: /shared
+      {{- end }}
+
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+            - name: mcp
+              containerPort: {{ .Values.service.mcpPort }}
+              protocol: TCP
+            - name: mim
+              containerPort: {{ .Values.service.mimPort }}
+              protocol: TCP
+          {{- if .Values.probes.startup.enabled }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.probes.startup.path }}
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds | default 10 }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds | default 10 }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold | default 60 }}
+          {{- end }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds | default 10 }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds | default 15 }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold | default 5 }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds | default 5 }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds | default 10 }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold | default 3 }}
+          {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "itops-backend.fullname" . }}-config
+          env:
+            {{- toYaml .Values.env | nindent 12 }}
+          {{- if or .Values.configMaps .Values.keycloakSecret.enabled .Values.itsmSecret.enabled .Values.pvc.enabled }}
+          volumeMounts:
+            {{- if .Values.configMaps }}
+            {{- range .Values.configMaps }}
+            - name: {{ .name }}
+              mountPath: {{ .destinationPath }}
+              subPath: {{ .fileName }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.keycloakSecret.enabled }}
+            - name: keycloak-secret-vol
+              mountPath: {{ .Values.keycloakSecret.mountPath }}/{{ .Values.keycloakSecret.fileName }}
+              subPath: {{ .Values.keycloakSecret.fileName }}
+              readOnly: true
+            {{- end }}
+            {{- if .Values.itsmSecret.enabled }}
+            - name: itsm-secret-vol
+              mountPath: {{ .Values.itsmSecret.mountPath }}/{{ .Values.itsmSecret.fileName }}
+              subPath: {{ .Values.itsmSecret.fileName }}
+              readOnly: true
+            {{- end }}
+            {{- if .Values.pvc.enabled }}
+            {{- range .Values.pvc.sharedFiles }}
+            - name: shared-storage
+              mountPath: {{ .mountPath }}/{{ .fileName }}
+              subPath: {{ .pvcName }}
+            {{- end }}
+            {{- end }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- if or .Values.configMaps .Values.keycloakSecret.enabled .Values.itsmSecret.enabled .Values.pvc.enabled }}
+      volumes:
+        {{- if .Values.configMaps }}
+        {{- range .Values.configMaps }}
+        - name: {{ .name }}
+          configMap:
+            name: {{ .name }}
+        {{- end }}
+        {{- end }}
+        {{- if .Values.keycloakSecret.enabled }}
+        - name: keycloak-secret-vol
+          secret:
+            secretName: keycloak-secret
+        {{- end }}
+        {{- if .Values.itsmSecret.enabled }}
+        - name: itsm-secret-vol
+          secret:
+            secretName: itsm-secret
+        {{- end }}
+        {{- if .Values.pvc.enabled }}
+        - name: shared-storage
+          persistentVolumeClaim:
+            claimName: {{ include "itops-backend.fullname" . }}-pvc
+        {{- end }}
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      {{- end }}
+      {{- if .Values.affinity }}
+      affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: itops-agent-gateway-engine
+description: Helm Chart for AKS
+type: application
+version: 0.1.0
+appVersion: "latest"

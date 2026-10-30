@@ -1,0 +1,430 @@
+# =============================================================================
+# ATK — Docker Compose Deployment
+#
+# BEFORE YOU START — read the three sections below:
+#
+# [A] USING THIS AS-IS (default)
+#     Postgres and Vault run as containers. Fill in .env and all config/
+#     files, place SSL certs in ssl/, then run: docker compose up -d
+#
+# [B] IF YOU HAVE AN EXISTING POSTGRES
+#     1. Comment out / delete the entire "postgres" service block below
+#     2. Comment out postgres_data under volumes: at the bottom
+#     3. On ALL services that have "depends_on: postgres:" — remove that block
+#     4. Update DB_HOST and PGDB_HOST on backend and kb-sync (change "postgres"
+#        to your external DB hostname/IP)
+#     5. Update KC_DB_URL on keycloak (change "postgres" to your DB host)
+#     6. Update DATABASE_URL on litellm (change "postgres" to your DB host)
+#     7. Update config/litellm_config.yaml database_url with your DB host
+#     8. Run init/01_init.sh manually against your postgres to create the
+#        keycloak and litellm databases and enable the pgvector extension
+#     !! pgvector MUST be installed in your postgres or RAG will not work !!
+#
+# [C] IF YOU HAVE AN EXISTING VAULT
+#     1. Comment out / delete the entire "vault" service block below
+#     2. Comment out vault_data under volumes: at the bottom
+#     3. On backend depends_on — remove "vault: condition: service_started"
+#     4. Update config/.vault_env: set VAULT_URL to your Vault server URL
+#        and VAULT_TOKEN to your token (remove http://vault:8200)
+#     5. In your Vault, create the secret path the backend reads from
+#        and populate it with: MODEL, BASE_URL, API_KEY, API_TYPE,
+#        AZ_API_VERSION (your LLM provider credentials)
+#     6. If nginx exposes Vault on port 8443 and you don't need that,
+#        remove port 8443 from nginx and the Vault server block in nginx.conf
+# =============================================================================
+
+services:
+
+  # ─── INFRASTRUCTURE ──────────────────────────────────────────────────────────
+  # ═══ [B] EXISTING POSTGRES? Remove this entire block ════════════════════════
+  # Delete or comment out everything from "postgres:" down to "# END [B]" below.
+  # Full checklist: see [B] at the TOP OF THIS FILE.
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  postgres:
+    image: pgvector/pgvector:pg16       # Do NOT replace with plain postgres image —
+                                        # pgvector extension is required for RAG search
+    container_name: atk-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}           # set in .env
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}   # set in .env
+      POSTGRES_DB: ${POSTGRES_DB}               # set in .env — this is the ATK main DB
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d      # runs init/01_init.sh on first boot only
+                                                # creates keycloak_db and litellm_db
+                                                # [B] if using existing DB: run this script
+                                                #     manually against your postgres instead
+    networks:
+      - atk-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  # END [B] postgres ────────────────────────────────────────────────────────────
+
+  # ═══ [C] EXISTING VAULT? Remove this entire block ════════════════════════════
+  # Delete or comment out everything from "vault:" down to "# END [C]" below.
+  # Full checklist: see [C] at the TOP OF THIS FILE.
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  vault:
+    image: hashicorp/vault:latest
+    container_name: atk-vault
+    user: root
+    entrypoint: ["vault", "server", "-config=/vault/config/vault.hcl"]
+    ports:
+      - "8200:8200"                     # internal only — access via nginx port 8443
+    volumes:
+      - vault_data:/vault/data          # secrets are persisted here
+      - ./config/vault.hcl:/vault/config/vault.hcl:ro
+    networks:
+      - atk-network
+    restart: unless-stopped
+    # FIRST BOOT: Vault starts SEALED. You must:
+    #   1. docker exec -it atk-vault vault operator init
+    #   2. docker exec -it atk-vault vault operator unseal  (run 3x with unseal keys)
+    #   3. Log into Vault UI at https://<DNS>:8443 with root token
+    #   4. Create secret with LLM credentials (MODEL, BASE_URL, API_KEY, etc.)
+    # After first boot the vault_data volume retains state across restarts.
+  # END [C] vault ───────────────────────────────────────────────────────────────
+
+  # ─── IDENTITY ────────────────────────────────────────────────────────────────
+
+  keycloak:
+    image: <JFrog Registry URL>/<Keycloak Image Name>:<Keycloak Image Tag>
+    container_name: atk-keycloak
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}                   # set in .env
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD} # set in .env
+      KC_PROXY_HEADERS: xforwarded         # required — keycloak sits behind nginx
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "false"
+      KC_HTTP_RELATIVE_PATH: /auth         # keycloak served under /auth/ subpath
+      KC_HOSTNAME: https://${DNS_NAME}/auth  # DNS_NAME set in .env — public URL keycloak
+                                             # uses in tokens and redirects
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${KEYCLOAK_DB}
+      # [B] EXISTING POSTGRES? Change "postgres" above to your DB host:
+      #     KC_DB_URL: jdbc:postgresql://<your-db-host>:5432/${KEYCLOAK_DB}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}   # set in .env
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASS}   # set in .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # [B] EXISTING POSTGRES? Remove the two lines above (postgres depends_on)
+    networks:
+      - atk-network
+    restart: unless-stopped
+    command: start-dev
+
+  # ─── LLM PROXY ───────────────────────────────────────────────────────────────
+
+  litellm:
+    image: <JFrog Registry URL>/<LiteLLM Image Name>:<LiteLLM Image Tag>
+    container_name: atk-litellm
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}       # set in .env — used to call LiteLLM API
+      UI_USERNAME: ${LITELLM_UI_USERNAME}             # set in .env — LiteLLM admin UI login
+      UI_PASSWORD: ${LITELLM_UI_PASSWORD}             # set in .env
+      STORE_MODEL_IN_DB: "true"                       # stores model configs in litellm_db
+      TRUST_PROXY_HEADERS: "true"                     # required — litellm sits behind nginx
+      LITELLM_PUBLIC_BASE_URL: https://${DNS_NAME}/litellm  # DNS_NAME set in .env
+      DATABASE_URL: postgresql://${LITELLM_DB_USER}:${LITELLM_DB_PASS}@postgres:5432/${LITELLM_DB}
+      # [B] EXISTING POSTGRES? Change "postgres" above to your DB host:
+      #     DATABASE_URL: postgresql://${LITELLM_DB_USER}:${LITELLM_DB_PASS}@<your-db-host>:5432/${LITELLM_DB}
+      SERVER_ROOT_PATH: /litellm         # tells LiteLLM it is served under /litellm subpath
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./config/litellm_config.yaml:/app/config.yaml
+      # config/litellm_config.yaml also has database_url — update that file too
+      # if using existing postgres [B]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # [B] EXISTING POSTGRES? Remove the two lines above (postgres depends_on)
+    networks:
+      - atk-network
+    restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--detailed_debug"]
+
+  # ─── BACKEND ─────────────────────────────────────────────────────────────────
+
+  backend:
+    image: <JFrog Registry URL>/<Backend Image Name>:<Backend Image Tag>
+    container_name: atk-backend
+    environment:
+      PORT: "8000"
+      ENVIRONMENT: production
+      CORS_ORIGINS: "*"
+      ALLOWED_ORIGINS: "*"
+
+      # ── Database ──────────────────────────────────────────────────────────────
+      DB_HOST: postgres          # [B] EXISTING POSTGRES? Change to your DB host/IP
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB}   # set in .env
+      PGDB_HOST: postgres        # [B] EXISTING POSTGRES? Change to your DB host/IP
+                                 #     (same as DB_HOST — two naming conventions supported)
+      PGDB_PORT: "5432"
+      PGDB_NAME: ${POSTGRES_DB} # set in .env
+
+      # ── Vector / similarity (do not change these) ─────────────────────────────
+      VECTOR_DIM: "1536"
+      DUPLICATE_THRESHOLD: "0.9"
+      SIMILARITY_THRESHOLD: "0.7"
+      PASS_THRESHOLD: "0.7"
+
+      # ── ITSM / ServiceNow ─────────────────────────────────────────────────────
+      SNOW_URL: ${SNOW_URL}     # set in .env — your ServiceNow instance URL
+      INC_TIMELINE: "30"        # how many days of incidents to fetch
+      KB_BASES: ${KB_BASES}     # set in .env — comma-separated KB base names to sync
+      KB_FIELDS: ${KB_FIELDS}   # set in .env — KB fields to index for RAG
+
+      # ── Keycloak ──────────────────────────────────────────────────────────────
+      KEYCLOAK_URL: http://keycloak:8080/auth   # internal Docker URL — do not change
+                                                # backend validates JWT tokens here
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM}         # set in .env
+
+      # ── LLM (leave blank — fetched from Vault at runtime) ────────────────────
+      # [C] These are populated by the backend reading config/.vault_env and
+      #     calling your Vault server. Do NOT set them here.
+      MODEL: ""
+      BASE_URL: ""
+      API_TYPE: ""
+      AZ_API_VERSION: ""
+      API_VERSION: ""
+      PROXY: ""
+      SECRET_MANAGER_NAME: ""
+      SECRET_MANAGER_REGION: ""
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      # ── Entrypoint: starts MCP server on port 6000, then FastAPI ─────────────
+      - ./entrypoint.sh:/app/entrypoint.sh
+
+      # ── Vault credentials ─────────────────────────────────────────────────────
+      # [C] EXISTING VAULT? Update VAULT_URL and VAULT_TOKEN in .vault_env
+      #     to point to your external Vault server instead of http://vault:8200
+      - ./config/.vault_env:/app/config/.vault_env:ro
+      - ./config/.vault_type:/app/config/.vault_type:ro
+
+      # ── Keycloak backend client credentials ───────────────────────────────────
+      # CLIENT_ID and CLIENT_SECRET for backend to call Keycloak API
+      - ./config/.keycloak_env:/app/config/.keycloak_env:ro
+
+      # ── ServiceNow credentials ────────────────────────────────────────────────
+      - ./config/.itsm_env:/app/config/.itsm_env:ro
+
+      # ── Per-module AI system prompts ──────────────────────────────────────────
+      # Mounted read-write (no :ro) — the admin console writes prompt changes back
+      # to these files through the backend. Changes are live immediately; no restart
+      # needed for prompt edits made via the UI.
+      # Direct file edits on the host also work — restart backend to reload those.
+      - ./system_prompts/change_assist.yaml:/app/modules/change_assist/config/system_prompts.yaml
+      - ./system_prompts/incident_assist.yaml:/app/modules/incident_assist/config/system_prompts.yaml
+      - ./system_prompts/knowledge_assist.yaml:/app/modules/knowledge_assist/config/system_prompts.yaml
+      - ./system_prompts/meeting_assist.yaml:/app/modules/meeting_assist/config/system_prompts.yaml
+      - ./system_prompts/problem_assist.yaml:/app/modules/problem_assist/config/system_prompts.yaml
+      - ./system_prompts/train_assist.yaml:/app/modules/train_assist/config/system_prompts.yaml
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # [B] EXISTING POSTGRES? Remove the two lines above (postgres depends_on)
+      vault:
+        condition: service_started
+      # [C] EXISTING VAULT? Remove the two lines above (vault depends_on)
+      keycloak:
+        condition: service_started
+    networks:
+      - atk-network
+    restart: unless-stopped
+
+  # ─── KB SYNC CRON JOB ────────────────────────────────────────────────────────
+  # Syncs KB articles from ServiceNow into the postgres vector store on a schedule.
+  # Incident Assist RAG search depends on this data being present.
+  # On first deploy run manually: docker exec atk-kb-sync python3 /app/modules/knowledge_assist/utils/kb_sync.py initial
+
+  kb-sync:
+    image: <JFrog Registry URL>/<Backend Image Name>:<Backend Image Tag>
+    container_name: atk-kb-sync
+    entrypoint: ""
+    # Sleep interval between runs — adjust to your desired frequency:
+    #   604800 = every 7 days
+    #    86400 = every day
+    #    21600 = every 6 hours
+    command: >
+      sh -c "
+        echo 'KB sync scheduler started' &&
+        while true; do
+          python3 /app/modules/knowledge_assist/utils/kb_sync.py initial;
+          echo 'Next run in 7 days';
+          sleep 604800;
+        done
+      "
+    environment:
+      DB_HOST: postgres          # [B] EXISTING POSTGRES? Change to your DB host/IP
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB}
+      PGDB_HOST: postgres        # [B] EXISTING POSTGRES? Change to your DB host/IP
+      PGDB_PORT: "5432"
+      PGDB_NAME: ${POSTGRES_DB}
+      SNOW_URL: ${SNOW_URL}
+      KB_BASES: ${KB_BASES}
+      KB_FIELDS: ${KB_FIELDS}
+      KEYCLOAK_URL: http://keycloak:8080/auth
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+    volumes:
+      # [C] EXISTING VAULT? Update VAULT_URL in .vault_env to your external Vault
+      - ./config/.vault_env:/app/config/.vault_env:ro
+      - ./config/.vault_type:/app/config/.vault_type:ro
+      - ./config/.itsm_env:/app/config/.itsm_env:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # [B] EXISTING POSTGRES? Remove the two lines above (postgres depends_on)
+    networks:
+      - atk-network
+    restart: unless-stopped
+
+  # ─── FRONTENDS ───────────────────────────────────────────────────────────────
+
+  frontend:
+    image: <JFrog Registry URL>/<Frontend Image Name>:<Frontend Image Tag>
+    container_name: atk-frontend
+    command: sh -c "cd /app && npm start"
+    environment:
+      REACT_APP_ITOPS_MFE_URL: https://${DNS_NAME}/v2/itops-mfe/itops-mfe-remote-entry.js
+      PORT: "80"
+      BROWSER: none
+    volumes:
+      # config.json supplies all API URLs and Keycloak config to the React app.
+      # Edit config/config.json with your DNS name, Keycloak realm, and clientId.
+      - ./config/config.json:/app/public/config.json:ro
+    depends_on:
+      - backend
+    networks:
+      - atk-network
+    restart: unless-stopped
+
+  # admin-frontend is a two-step process:
+  #   Step 1 (builder): compiles the React admin console (~5 min), then exits
+  #   Step 2 (nginx):   serves the compiled output — starts after builder finishes
+  #
+  # If you change DNS name or Keycloak config in app-config.ts you must rebuild:
+  #   docker compose up --force-recreate admin-frontend-builder admin-frontend
+
+  admin-frontend-builder:
+    image: <JFrog Registry URL>/<Admin Frontend Image Name>:<Admin Frontend Image Tag>
+    container_name: atk-admin-frontend-builder
+    environment:
+      VITE_APP_PIPELINE_STAGE: production
+      VITE_APP_BASE_PATH: /v2/
+      VITE_ENABLE_DOCS_PAGE: "true"
+      VITE_ENABLE_DEV_SPACE_PAGE: "true"
+    command: >
+      sh -c "cp /override/app-config.ts /app/src/config/app-config.ts &&
+             cd /app &&
+             GENERATE_SOURCEMAP=false NODE_OPTIONS=--max-old-space-size=4096 npm run build &&
+             cp -r dist/* /shared/"
+    volumes:
+      # app-config.ts: update DNS name, Keycloak URL, realm, and clientId inside
+      - ./config/app-config.ts:/override/app-config.ts:ro
+      # public.pem: your Keycloak realm RSA public key (from Keycloak Admin → Realm Settings → Keys)
+      - ./config/public.pem:/app/public.pem:ro
+      # license.txt: your ATK license key provided by Cognizant
+      - ./config/license.txt:/app/license.txt:ro
+      - admin-frontend-dist:/shared
+    networks:
+      - atk-network
+    restart: "no"
+
+  admin-frontend:
+    image: nginx:alpine
+    container_name: atk-admin-frontend
+    volumes:
+      - admin-frontend-dist:/usr/share/nginx/html:ro
+      - ./config/nginx-v2.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      admin-frontend-builder:
+        condition: service_completed_successfully
+    networks:
+      - atk-network
+    restart: unless-stopped
+
+  # ─── OBSERVABILITY ───────────────────────────────────────────────────────────
+
+  grafana:
+    image: <JFrog Registry URL>/<Grafana Image Name>:<Grafana Image Tag>
+    container_name: atk-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: <Grafana Admin Password>   # set your own password here
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SERVER_ROOT_URL: https://${DNS_NAME}/grafana         # DNS_NAME set in .env
+    ports:
+      - "3000:3000"
+      - "5327:4317"   # OTLP gRPC — receives traces from backend
+      - "5328:4318"   # OTLP HTTP — receives traces from backend
+    volumes:
+      - grafana_data:/data
+      - ./config/grafana.ini:/etc/nginx/grafana.ini:ro
+      # grafana.ini also sets root_url and admin password — keep in sync with above
+    networks:
+      - atk-network
+    restart: unless-stopped
+
+  # ─── REVERSE PROXY ───────────────────────────────────────────────────────────
+  # nginx is the single entry point for all HTTPS traffic.
+  # Port 443: all services (keycloak, litellm, grafana, backend, frontend, admin)
+  # Port 8443: Vault UI only
+  # [C] EXISTING VAULT (not in compose)? You can remove port 8443 from ports below
+  #     and remove the "server { listen 8443 ssl; ... }" block from config/nginx.conf
+
+  nginx:
+    image: nginx:alpine
+    container_name: atk-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8443:8443"   # [C] EXISTING VAULT? Remove this line if not needed
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+      # ssl/: place your fullchain.pem and privkey.pem here
+      # These are your SSL certificates for your DNS_NAME domain
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+      - frontend
+      - admin-frontend
+      - keycloak
+      - litellm
+      - grafana
+    networks:
+      - atk-network
+    restart: unless-stopped
+
+# ─── NETWORKS ─────────────────────────────────────────────────────────────────
+
+networks:
+  atk-network:
+    driver: bridge
+
+# ─── VOLUMES ──────────────────────────────────────────────────────────────────
+# Named volumes persist data across container restarts and removals.
+# WARNING: "docker compose down -v" deletes all volumes and ALL data.
+
+volumes:
+  postgres_data:        # [B] EXISTING POSTGRES? Remove this line
+  vault_data:           # [C] EXISTING VAULT?    Remove this line
+  grafana_data:
+  admin-frontend-dist:

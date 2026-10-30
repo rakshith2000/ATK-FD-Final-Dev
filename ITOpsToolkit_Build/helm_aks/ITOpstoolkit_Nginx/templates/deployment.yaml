@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "itops-nginx.fullname" . }}
+  labels:
+    {{- include "itops-nginx.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "itops-nginx.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "itops-nginx.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/nginx-config: {{ .Files.Get "config-file/nginx.conf" | sha256sum }}
+    spec:
+      {{- if .Values.jfrogSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.jfrogSecret.name }}
+      {{- end }}
+      containers:
+        - name: {{ include "itops-nginx.name" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          ports:
+            - containerPort: {{ .Values.service.targetPort }}
+          volumeMounts:
+            {{- if .Values.secret.name }}
+            - name: tls
+              mountPath: /etc/nginx/tls
+              readOnly: true
+            {{- end }}
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+      volumes:
+        {{- if .Values.secret.name }}
+        - name: tls
+          secret:
+            secretName: "{{ .Values.secret.name }}"
+        {{- end }}
+        - name: nginx-config
+          configMap:
+            name: {{ include "itops-nginx.fullname" . }}-nginx-config
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}

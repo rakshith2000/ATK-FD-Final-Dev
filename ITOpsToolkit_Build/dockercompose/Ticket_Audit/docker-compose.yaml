@@ -1,0 +1,34 @@
+services:
+  ticket_audit_frontend:
+    build:
+      context: ./ticket_audit_front_end
+      dockerfile: Dockerfile
+    image: ticket_audit_frontend
+    container_name: ticket_audit_frontend
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  ticket_audit_backend:
+    build:
+      context: ./ITOpsToolkit_Ticket_Audit
+      dockerfile: Dockerfile
+    image: ticket_audit_backend
+    container_name: ticket_audit_backend
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  grafana_ticket_audit:
+    image: grafana/grafana
+    container_name: grafana_ticket_audit
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafanadata:/var/lib/grafana
+    restart: unless-stopped
+
+volumes:
+  grafanadata:

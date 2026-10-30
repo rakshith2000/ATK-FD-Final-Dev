@@ -1,0 +1,93 @@
+replicaCount: 1
+
+###########For File Mounting ###############
+configMaps:
+  - name: litellm-config
+    destinationPath: /app/config.yaml
+    fileName: litellm-config.yaml
+      # Additional files can be mounted by adding entries in the format above
+################################################
+
+image:
+  repository: <ECR ARN>/<Repo Name>
+  pullPolicy: Always
+  tag: "<Tag Name>"
+
+
+###########For Nginx Ingress Controller########
+# ingress:
+#  className: "nginx"
+################################################
+
+# ############AWS Load Balancer Ingress########## #uncomment as per requirement
+ingress:
+   className: "alb"
+   annotations:
+     alb.ingress.kubernetes.io/group.name: atk-group #This group name can be any name. Try to use the same name for all ATK components to avoid multiple LB creations
+     alb.ingress.kubernetes.io/scheme: internal     #<internet-facing> for internet facing
+     alb.ingress.kubernetes.io/target-type: ip
+     alb.ingress.kubernetes.io/healthcheck-path: /litellm
+     alb.ingress.kubernetes.io/success-codes: "200-399"
+     alb.ingress.kubernetes.io/group.order: "10"
+     alb.ingress.kubernetes.io/healthcheck-port: '<Port>' #4000
+     alb.ingress.kubernetes.io/ssl-redirect: '443'
+     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+     alb.ingress.kubernetes.io/target-group-attributes: stickiness.enabled=true,stickiness.type=lb_cookie,stickiness.lb_cookie.duration_seconds=86400
+#      alb.ingress.kubernetes.io/certificate-arn: <ACM ARN>  #Uncomment this line and remove 'secret' block only if ACM is being used for DNS certificates
+
+# ###############################################
+
+service:
+  type: ClusterIP
+  port: <Port> #4000
+  targetPort: <Port> #4000
+  
+nameOverride: "itops-litellm"
+fullnameOverride: "itops-platform-itops-litellm"
+
+nodeSelector:
+  <label-key>: <label-value>
+
+host:
+  name: "<DNS Name>" #without https
+
+resources:
+  limits:
+    cpu: 1500m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+    
+# Below secret is for SSL certtificates. Remove this if its not needed 
+secret:
+  name: "<K8s secret name>"
+
+# Uncomment this only if the image is getting pulled from JFrog directly via helms 
+# jfrogSecret:
+#   name: <secret-name>
+
+
+#Probes can be disabled by setting 'false' for the below fields
+probes:
+  liveness:
+    enabled: true
+    path: /health/liveliness
+  readiness:
+    enabled: true
+    path: /health/readiness
+
+
+env:
+  - name: LITELLM_MASTER_KEY
+    value: "<Master Password>"
+  - name: UI_USERNAME
+    value: "<Username>"
+  - name: UI_PASSWORD
+    value: "<Password>"
+  - name: LITELLM_PUBLIC_BASE_URL
+    value: "<DNS>/litellm"
+  - name: DATABASE_URL
+    value: "postgresql://<LiteLLM-DB-Username>:<LiteLLM-DB-Password>@<LiteLLM-DB Host>:<LiteLLM-DB-Port>/<LiteLLM-DB-Name>"
+  - name: SERVER_ROOT_PATH
+    value: "/litellm"

@@ -1,0 +1,21 @@
+version: "3.8"
+services:
+  litellm:
+    image: docker.litellm.ai/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./config.yaml:/app/config.yaml
+    environment:
+      - LITELLM_MASTER_KEY=AdC10ack
+      - UI_USERNAME=base_user
+      - UI_PASSWORD=AdC10ack
+      - STORE_MODEL_IN_DB=true
+      - TRUST_PROXY_HEADERS=true
+      - LITELLM_PUBLIC_BASE_URL=https://demoadk.autonomousitopstoolkit.com
+    command:
+      - "--config"
+      - "/app/config.yaml"
+      - "--detailed_debug"
+    restart: unless-stopped
+
