@@ -237,6 +237,26 @@ services:
       PGDB_PORT: "5432"
       PGDB_NAME: ${POSTGRES_DB} # set in .env
 
+      # ── ServiceNow scope enforcement ──────────────────────────────────────────
+      # Under service-account auth every ATK user reaches ServiceNow as the same
+      # account, so ServiceNow cannot tell them apart. This makes the backend
+      # append a mandatory ownership clause (assigned to me / my groups / opened
+      # by me) to every browser-originated ServiceNow query, and deny tables that
+      # are not on the allowlist. It restores the guarantee ATK 2.1 had, where
+      # the browser never got to choose the query.
+      #
+      #   on  (default) - enforce. Correct for service-account deployments.
+      #   off           - passthrough. ONLY safe once ServiceNow authenticates
+      #                   each user itself (serviceNow.api.mode = "direct"),
+      #                   because then ServiceNow applies its own ACLs.
+      #
+      # Deliberately a backend env var, not frontend config - a browser must not
+      # be able to influence it.
+      SNOW_SCOPE_ENFORCEMENT: "${SNOW_SCOPE_ENFORCEMENT:-on}"
+      # Seconds to cache a caller's sys_id / assignment groups / readable KBs.
+      # Higher = fewer lookups per request; lower = group changes apply sooner.
+      SNOW_SCOPE_CACHE_TTL: "${SNOW_SCOPE_CACHE_TTL:-60}"
+
       # ── Vector / similarity (do not change these) ─────────────────────────────
       VECTOR_DIM: "1536"
       DUPLICATE_THRESHOLD: "0.9"
@@ -295,6 +315,22 @@ services:
       - ./hotfix/servicenow_mcp.py:/app/mcp_servers/servicenow_mcp.py
       - ./hotfix/kb_sync.py:/app/modules/knowledge_assist/utils/kb_sync.py
       - ./hotfix/auth_handler.py:/app/modules/auth/utils/auth_handler.py
+
+      # ── ServiceNow proxy (service-account auth for browser-originated calls) ──
+      # The frontend no longer calls ServiceNow directly — it calls the backend,
+      # which authenticates downstream using the ITSM connector credentials
+      # (basic auth for Service Account, bearer for OAuth — chosen by
+      # itsm_auth_type). These two add the attachment + stats passthrough and
+      # the sys_id / query_string params the frontend rewrite relies on.
+      #
+      # !! VERIFY BEFORE FIRST USE — these are built from repo source, while the
+      #    container runs image backend_2.3.2. Confirm there is no drift:
+      #      docker cp atk-backend:/app/modules/incident_assist/routers/incident_assist_routers.py /tmp/img_routers.py
+      #      diff /tmp/img_routers.py ./hotfix/incident_assist_routers.py
+      #    Expect ONLY the proxy additions. Anything else means the image has
+      #    moved on from this source tree — reconcile before mounting.
+      - ./hotfix/servicenow_proxy.py:/app/modules/incident_assist/utils/servicenow_proxy.py
+      - ./hotfix/incident_assist_routers.py:/app/modules/incident_assist/routers/incident_assist_routers.py
 
       # ── Keycloak backend client credentials ───────────────────────────────────
       # CLIENT_ID and CLIENT_SECRET for backend to call Keycloak API

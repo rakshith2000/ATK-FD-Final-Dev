@@ -96,6 +96,13 @@ export const backendApiSchema = z
 export const serviceNowApiSchema = z
     .object({
         baseUrl: z.string().min(1, 'serviceNow.api.baseUrl is required'),
+        // How the browser reaches ServiceNow.
+        //   'proxy'  - via the ATK backend, which authenticates with the ITSM
+        //              connector's own credentials (service account or bearer).
+        //   'direct' - browser to ServiceNow, carrying the caller's own token.
+        //              Requires ServiceNow to trust the IdP that issued it.
+        // Defaults to 'proxy' so a config file without the key keeps working.
+        mode: z.enum(['proxy', 'direct']).optional().default('proxy'),
         userDetails: z.string().min(1),
         userMemberOfAssignmentGroupsByUserSysId: z.string().min(1),
         assignmentGroups: z.string().min(1),

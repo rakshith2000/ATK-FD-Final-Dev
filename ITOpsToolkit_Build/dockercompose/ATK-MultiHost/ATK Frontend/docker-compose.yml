@@ -60,6 +60,29 @@ services:
       - ./config/config.json:/app/public/config.json:ro
       - ./config/public.pem:/app/public.pem:ro
       - ./config/license.txt:/app/public/license.txt:ro
+
+      # ── ServiceNow routing mode ──────────────────────────────────────────────
+      # ServiceNow does not trust our Keycloak realm, so the browser cannot call
+      # it directly with a Keycloak token — it 401s ("User Not Authenticated").
+      # These rewrite every ServiceNow-shaped request onto the backend's
+      # ServiceNow proxy, which authenticates with the service account instead.
+      #
+      # Controlled by serviceNow.api.mode in config/app-config.json:
+      #   "proxy"  (default) — via the backend, service-account auth
+      #   "direct"           — straight to ServiceNow, caller's own token
+      #                        (set this when you move to ServiceNow OAuth)
+      #
+      # !! VERIFY BEFORE FIRST USE — built from repo source, while the builder
+      #    runs image frontend_2.3.3. Confirm there is no drift:
+      #      docker run --rm --entrypoint sh <frontend-image> -c \
+      #        'cat /app/src/api/axios-clients/service-now-api/service-now-api-client.ts'
+      #    and compare against ./src-override/. to-backend-proxy-request.ts is
+      #    new, so it has no counterpart in the image — that one is expected.
+      - ./src-override/service-now-api-client.ts:/app/src/api/axios-clients/service-now-api/service-now-api-client.ts:ro
+      - ./src-override/to-backend-proxy-request.ts:/app/src/api/axios-clients/service-now-api/to-backend-proxy-request.ts:ro
+      - ./src-override/apply-auth-token.interceptor.ts:/app/src/api/axios-clients/service-now-api/apply-auth-token.interceptor.ts:ro
+      - ./src-override/refresh-auth-token.interceptor.ts:/app/src/api/axios-clients/service-now-api/refresh-auth-token.interceptor.ts:ro
+
       - frontend_dist:/shared
     #depends_on:
     #  - backend

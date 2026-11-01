@@ -3,6 +3,7 @@ import logger from '@/shared/utils/logger';
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import serviceNowApiClient from './service-now-api-client';
 import { appConfig } from '@/config/app-config';
+import { getSnowApiMode } from './to-backend-proxy-request';
 
 let isTokenRefreshInProgress = false;
 
@@ -72,7 +73,9 @@ export async function refreshAuthTokenInterceptor(error: AxiosError) {
 
         return new Promise((resolve, reject) => {
             authProviderInstance
-                .refreshToken('serviceNow')
+                // In proxy mode a 401 came from the ATK backend, so the backend's
+                // token is the one that needs refreshing - not ServiceNow's.
+                .refreshToken(getSnowApiMode() === 'proxy' ? 'backend' : 'serviceNow')
                 .then((newToken) => {
                     serviceNowApiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
                     originalRequest.headers['Authorization'] = `Bearer ${newToken}`;

@@ -85,6 +85,7 @@
     "serviceNow": {
         "api": {
             "baseUrl": "https://fddev.service-now.com",
+            "mode": "proxy",
             "userDetails": "/api/now/table/sys_user",
             "userMemberOfAssignmentGroupsByUserSysId": "/api/now/table/sys_user_grmember?sysparm_fields=group&sysparm_display_value=all&sysparm_query=user=<USER_SYS_ID_PLACEHOLDER>",
             "assignmentGroups": "/api/now/table/sys_user_group?sysparm_fields=name,sys_id",

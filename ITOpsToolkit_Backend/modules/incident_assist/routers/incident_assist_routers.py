@@ -8,7 +8,7 @@ import logging
 import datetime
 
 # Third party packages
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi import APIRouter, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -1601,11 +1601,42 @@ async def generate_resolution_notes(payload: ResolutionSummaryRequestModel,
         return JSONResponse(status_code = response["code"], content = response)
     
 # Servicenow Proxy Routes
+
+def mask_upstream_auth_failure(code, data):
+    """
+    Remap a ServiceNow 401/403 onto 502 before returning it to the browser.
+
+    These routes echo ServiceNow's status verbatim, which is right for every code
+    except 401/403. Those mean "the ITSM connector credentials were rejected" -
+    but to the frontend a 401 means "your ATK session expired", so it refreshes
+    the Keycloak token and retries, up to MAX_TOKEN_REFRESH_RETRIES times. That
+    turns a wrong service-account password into a silent retry storm against
+    Keycloak instead of a legible error.
+
+    502 says what it actually is: this gateway could not authenticate upstream.
+    Only the HTTP routes mask it - internal callers of ServiceNow.execute() still
+    get the raw status.
+    """
+
+    if code not in (401, 403):
+        return (code, data)
+
+    return (502, {
+        "error": {
+            "message": "ServiceNow rejected the ITSM connector credentials.",
+            "detail": "Verify the ITSM connector's user/password (or bearer token) and that the service account holds the roles needed for this table.",
+            "upstream_status": code,
+            "upstream_response": data
+        },
+        "status": "failure"
+    })
+
 @router.get("/api/v1/get/")
 async def get_record(
     request: Request,
     table_name: str,
     query_string: str = "",
+    sys_id: str = "",
     user_info: User = Depends(get_user_info)
 ):
     st_ts = datetime.datetime.now(datetime.UTC)
@@ -1615,8 +1646,12 @@ async def get_record(
 
         code, data = ia_obj.get_query(
             table_name=table_name,
-            query_string=query_string
+            query_string=query_string,
+            sys_id=sys_id or None,
+            caller=user_info.user_id
         )
+
+        code, data = mask_upstream_auth_failure(code, data)
 
         en_ts = datetime.datetime.now(datetime.UTC)
 
@@ -1667,6 +1702,7 @@ async def create_record(
     request: Request,
     table_name: str,
     payload: dict,
+    query_string: str = "",
     user_info: User = Depends(get_user_info)
 ):
     st_ts = datetime.datetime.now(datetime.UTC)
@@ -1676,8 +1712,12 @@ async def create_record(
 
         code, data = ia_obj.post_query(
             table_name=table_name,
-            payload=payload
+            payload=payload,
+            query_string=query_string,
+            caller=user_info.user_id
         )
+
+        code, data = mask_upstream_auth_failure(code, data)
 
         en_ts = datetime.datetime.now(datetime.UTC)
 
@@ -1729,6 +1769,7 @@ async def update_record(
     table_name: str,
     sys_id: str,
     payload: dict,
+    query_string: str = "",
     user_info: User = Depends(get_user_info)
 ):
     st_ts = datetime.datetime.now(datetime.UTC)
@@ -1739,8 +1780,235 @@ async def update_record(
         code, data = ia_obj.patch_query(
             table_name=table_name,
             sys_id=sys_id,
-            payload=payload
+            payload=payload,
+            query_string=query_string,
+            caller=user_info.user_id
         )
+
+        code, data = mask_upstream_auth_failure(code, data)
+
+        en_ts = datetime.datetime.now(datetime.UTC)
+
+        if code >= 400:
+
+            log_event(
+                audit_logger,
+                logging.ERROR,
+                f"Accessed - Execution Error - {data}",
+                user_id=user_info.user_id,
+                api=request.url.path,
+                api_method=request.method,
+                exec_duration_in_sec=(en_ts - st_ts).total_seconds()
+            )
+
+            return JSONResponse(status_code=code, content=data)
+
+        log_event(
+            audit_logger,
+            logging.INFO,
+            "Accessed - Success",
+            user_id=user_info.user_id,
+            api=request.url.path,
+            api_method=request.method,
+            exec_duration_in_sec=(en_ts - st_ts).total_seconds()
+        )
+
+        return JSONResponse(status_code=code, content=data)
+
+    except Exception as e:
+
+        en_ts = datetime.datetime.now(datetime.UTC)
+
+        log_event(
+            audit_logger,
+            logging.ERROR,
+            f"Accessed - Execution Error - {str(e)}",
+            user_id=user_info.user_id,
+            api=request.url.path,
+            api_method=request.method,
+            exec_duration_in_sec=(en_ts - st_ts).total_seconds()
+        )
+
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@router.get("/api/v1/stats/")
+async def get_stats(
+    request: Request,
+    table_name: str,
+    query_string: str = "",
+    user_info: User = Depends(get_user_info)
+):
+    """
+    Proxy to ServiceNow's Aggregate API. Serves sysparm_count / sysparm_group_by
+    rollups, which /api/v1/get/ cannot - it only builds Table API URLs.
+    """
+
+    st_ts = datetime.datetime.now(datetime.UTC)
+
+    try:
+        ia_obj = ServiceNow()
+
+        code, data = ia_obj.stats_query(
+            table_name=table_name,
+            query_string=query_string,
+            caller=user_info.user_id
+        )
+
+        code, data = mask_upstream_auth_failure(code, data)
+
+        en_ts = datetime.datetime.now(datetime.UTC)
+
+        if code >= 400:
+
+            log_event(
+                audit_logger,
+                logging.ERROR,
+                f"Accessed - Execution Error - {data}",
+                user_id=user_info.user_id,
+                api=request.url.path,
+                api_method=request.method,
+                exec_duration_in_sec=(en_ts - st_ts).total_seconds()
+            )
+
+            return JSONResponse(status_code=code, content=data)
+
+        log_event(
+            audit_logger,
+            logging.INFO,
+            "Accessed - Success",
+            user_id=user_info.user_id,
+            api=request.url.path,
+            api_method=request.method,
+            exec_duration_in_sec=(en_ts - st_ts).total_seconds()
+        )
+
+        return JSONResponse(status_code=code, content=data)
+
+    except Exception as e:
+
+        en_ts = datetime.datetime.now(datetime.UTC)
+
+        log_event(
+            audit_logger,
+            logging.ERROR,
+            f"Accessed - Execution Error - {str(e)}",
+            user_id=user_info.user_id,
+            api=request.url.path,
+            api_method=request.method,
+            exec_duration_in_sec=(en_ts - st_ts).total_seconds()
+        )
+
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@router.get("/api/v1/attachment/")
+async def download_attachment(
+    request: Request,
+    sys_id: str,
+    user_info: User = Depends(get_user_info)
+):
+    """
+    Proxy to ServiceNow's Attachment API binary endpoint.
+
+    Returns the file bytes untouched rather than JSON, so the browser receives
+    exactly what ServiceNow sent, including Content-Type and Content-Disposition.
+    """
+
+    st_ts = datetime.datetime.now(datetime.UTC)
+
+    try:
+        ia_obj = ServiceNow()
+
+        code, content, headers = ia_obj.attachment_download_query(sys_id=sys_id, caller=user_info.user_id)
+
+        if code in (401, 403):
+            (code, body) = mask_upstream_auth_failure(code, {"text": "<binary omitted>"})
+            return JSONResponse(status_code=code, content=body)
+
+        en_ts = datetime.datetime.now(datetime.UTC)
+
+        if code >= 400:
+
+            log_event(
+                audit_logger,
+                logging.ERROR,
+                f"Accessed - Execution Error - attachment {sys_id} - status {code}",
+                user_id=user_info.user_id,
+                api=request.url.path,
+                api_method=request.method,
+                exec_duration_in_sec=(en_ts - st_ts).total_seconds()
+            )
+
+        else:
+
+            log_event(
+                audit_logger,
+                logging.INFO,
+                "Accessed - Success",
+                user_id=user_info.user_id,
+                api=request.url.path,
+                api_method=request.method,
+                exec_duration_in_sec=(en_ts - st_ts).total_seconds()
+            )
+
+        media_type = headers.pop("Content-Type", None) or "application/octet-stream"
+
+        return Response(
+            content=content,
+            status_code=code,
+            media_type=media_type,
+            headers=headers
+        )
+
+    except Exception as e:
+
+        en_ts = datetime.datetime.now(datetime.UTC)
+
+        log_event(
+            audit_logger,
+            logging.ERROR,
+            f"Accessed - Execution Error - {str(e)}",
+            user_id=user_info.user_id,
+            api=request.url.path,
+            api_method=request.method,
+            exec_duration_in_sec=(en_ts - st_ts).total_seconds()
+        )
+
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@router.post("/api/v1/attachment/")
+async def upload_attachment(
+    request: Request,
+    table_name: str,
+    table_sys_id: str,
+    file_name: str,
+    user_info: User = Depends(get_user_info)
+):
+    """
+    Proxy to ServiceNow's Attachment API upload endpoint.
+
+    The request body is the raw file, forwarded byte-for-byte with its own
+    Content-Type - this mirrors ServiceNow's own contract, which takes raw
+    binary rather than multipart/form-data.
+    """
+
+    st_ts = datetime.datetime.now(datetime.UTC)
+
+    try:
+        file_bytes = await request.body()
+        content_type = request.headers.get("content-type", "application/octet-stream")
+
+        ia_obj = ServiceNow()
+
+        code, data = ia_obj.attachment_upload_query(
+            table_name=table_name,
+            table_sys_id=table_sys_id,
+            file_name=file_name,
+            content_type=content_type,
+            file_bytes=file_bytes,
+            caller=user_info.user_id
+        )
+
+        code, data = mask_upstream_auth_failure(code, data)
 
         en_ts = datetime.datetime.now(datetime.UTC)
 
@@ -1792,6 +2060,7 @@ async def replace_record(
     table_name: str,
     sys_id: str,
     payload: dict,
+    query_string: str = "",
     user_info: User = Depends(get_user_info)
 ):
     st_ts = datetime.datetime.now(datetime.UTC)
@@ -1802,8 +2071,12 @@ async def replace_record(
         code, data = ia_obj.put_query(
             table_name=table_name,
             sys_id=sys_id,
-            payload=payload
+            payload=payload,
+            query_string=query_string,
+            caller=user_info.user_id
         )
+
+        code, data = mask_upstream_auth_failure(code, data)
 
         en_ts = datetime.datetime.now(datetime.UTC)
 
