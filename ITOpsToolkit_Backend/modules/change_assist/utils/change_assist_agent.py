@@ -251,7 +251,7 @@ def prompt_refactorer_agent(sys_prompts_config):
                   component_name="change_assist_agent - prompt_refactorer_agent")
         return log_str
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
     return client.create_agent(
         name="PromptRefactor",
@@ -286,7 +286,7 @@ async def architecture_topology_insight_agent(sys_prompts_config, mcp_tool):
                   component_name="change_assist_agent - architecture_topology_insight_agent")
         return log_str
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
     return client.create_agent(
         name="ArchitectureTopologyInsightAgent",
@@ -313,7 +313,7 @@ def architecture_image_analyzer_agent(sys_prompts_config):
                   component_name="change_assist_agent - architecture_image_analyzer_agent")
         return log_str
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
     return client.create_agent(
         name="ArchitectureImageAnalyzerAgent",
@@ -340,7 +340,7 @@ def change_creation_agent(sys_prompts_config):
                   component_name="change_assist_agent - data_merger_agent")
         return log_str
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
     client._litellm_params["response_format"] = ChangeRequest
 
     return client.create_agent(

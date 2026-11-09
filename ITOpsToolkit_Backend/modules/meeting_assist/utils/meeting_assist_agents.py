@@ -60,7 +60,7 @@ def meeting_transcript_summary_agent(sys_prompts_config):
         return log_str
 
     # Deterministic + strict schema. API guarantees {title, content:[...]}.
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
     return client.create_agent(
         name="TranscriptSummaryAgent",
@@ -91,7 +91,7 @@ def meeting_articles_generator_agent(sys_prompts_config):
         return log_str
 
     # Deterministic + strict schema. API guarantees {articles:[{title, content, tags}]}.
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
     return client.create_agent(
         name="ArticlesGeneratorAgent",
@@ -123,7 +123,7 @@ def article_conversion_agent(sys_prompts_config):
                   component_name = "knowledge_assist_agent - article_conversion_agent")
         return log_str
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
     return client.create_agent(
         name = "ArticleConversionAgent",
@@ -153,7 +153,7 @@ def meeting_chat_agent(sys_prompts_config):
         return log_str
 
     # Deterministic chat. No JSON mode — output is conversational text.
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
     return client.create_agent(
         name="ChatAgent",

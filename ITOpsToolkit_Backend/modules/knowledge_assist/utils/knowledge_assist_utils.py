@@ -124,10 +124,28 @@ class KnowledgeAssistUtils:
             output = json.loads(output)
 
             output_dict = {}
-            output_dict["title"] = output.get("title", "")
-            # output_dict["merged_article"] = re.sub(r"^```html\s*|\s*```$", "", output["merged_article"].strip()) + f"\n<span>Reference Articles: {kb_article_1}, {kb_article_2}</span>"
-            # output_dict["merged_article"] = re.sub(r"^```html\s*|\s*```$", "", output["merged_article"].strip())
+
+            # Prefer the explicit title from the LLM. When it is missing or empty
+            # (as in the failure you saw), derive a title from the merged HTML so
+            # the frontend's non-empty string constraint still holds.
+            title = (output.get("title") or "").strip()
             merged = re.sub(r"^```html\s*|\s*```$", "", output["merged_article"].strip())
+
+            if not title:
+                # Simple heuristic: take the first <h1> text if present; fall
+                # back to stripping any tags from the first line of the merged
+                # article. This keeps behaviour stable even when the agent
+                # changes its JSON schema slightly.
+                import re as _re
+                m = _re.search(r"<h1[^>]*>(.*?)</h1>", merged, flags=_re.IGNORECASE | _re.DOTALL)
+                if m:
+                    title = _re.sub(r"<[^>]+>", "", m.group(1)).strip()
+                else:
+                    first_line = merged.split("\n", 1)[0]
+                    title = _re.sub(r"<[^>]+>", "", first_line).strip()
+
+            output_dict["title"] = title
+
             merged = merged.replace("&#61;", "=")   # Decode HTML-encoded = in image URLs
             merged = merged.replace('\\"', '"')     # Remove backslashes before quotes left over from inconsistent LLM JSON escaping
             merged = merged.replace("\n", "")       # Remove actual newline characters (after json.loads, LLM \n becomes real newlines)

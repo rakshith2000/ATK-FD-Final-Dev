@@ -4,6 +4,7 @@
 # Default packages
 import os
 import sys
+import json
 import logging
 import datetime
 
@@ -1621,6 +1622,13 @@ def mask_upstream_auth_failure(code, data):
     if code not in (401, 403):
         return (code, data)
 
+    # A 403 produced by our own scope-enforcement layer already explains itself
+    # ("you do not have access to this attachment", "no ServiceNow user matches
+    # the signed-in account", ...). Relabelling it as a credential problem sends
+    # whoever is debugging straight to the wrong place.
+    if isinstance(data, dict) and data.get("scope_denied"):
+        return (code, data)
+
     return (502, {
         "error": {
             "message": "ServiceNow rejected the ITSM connector credentials.",
@@ -1921,7 +1929,14 @@ async def download_attachment(
         code, content, headers = ia_obj.attachment_download_query(sys_id=sys_id, caller=user_info.user_id)
 
         if code in (401, 403):
-            (code, body) = mask_upstream_auth_failure(code, {"text": "<binary omitted>"})
+            # On an error the body is JSON, not file bytes - decode it so the
+            # real reason survives instead of being replaced by a placeholder.
+            try:
+                body = json.loads(content.decode("utf-8"))
+            except Exception:
+                body = {"text": "<non-JSON error body omitted>"}
+
+            (code, body) = mask_upstream_auth_failure(code, body)
             return JSONResponse(status_code=code, content=body)
 
         en_ts = datetime.datetime.now(datetime.UTC)

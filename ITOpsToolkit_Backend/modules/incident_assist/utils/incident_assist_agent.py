@@ -71,7 +71,7 @@ def rag_agent(sys_prompts_config):
                   component_name = "incident_assist - rag_agent")
         return log_str
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
     return client.create_agent(
         name = "RagAgent",
@@ -101,7 +101,7 @@ async def incident_ai_chatbot(sys_prompts_config, mcp_tool):
                   component_name = "incident_assist_agent - incident_ai_chatbot")
         return log_str
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
     return client.create_agent(
         name = "ChatBotAgent",
@@ -131,7 +131,7 @@ async def incident_ai_demo_chatbot(sys_prompts_config):
                   component_name = "incident_assist_agent - incident_ai_demo_chatbot")
         return log_str
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
     return client.create_agent(
         name = "DemoChatBotAgent",
@@ -159,7 +159,7 @@ def resolution_summary_agent(sys_prompts_config):
                   component_name = "incident_assist - resolution_summary_agent")
         return log_str
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
     return client.create_agent(
         name = "ResolutionSummaryAgent",

@@ -112,6 +112,11 @@ class LiteLLMChatClient(FunctionInvocationLayer, ChatMiddlewareLayer, BaseChatCl
         # Token usage tracking
         self.usage = {}
 
+        # Certain providers (e.g., gpt-5 family) only accept temperature=1.
+        # Normalize here so unsupported params are never sent to LiteLLM.
+        if "gpt-5" in (model or "") and temperature not in (None, 1):
+            temperature = 1
+
         # Store default chat options as a dict (ChatOptions is now a TypedDict)
         self._default_options: Dict[str, Any] = {
             "temperature": temperature,

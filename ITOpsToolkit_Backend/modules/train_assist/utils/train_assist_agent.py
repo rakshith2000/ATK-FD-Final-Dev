@@ -56,7 +56,7 @@ def quiz_generation_agent(sys_prompts_config):
                   component_name="quiz_generation_agent")
         return log_str
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
     return client.create_agent(
         name="QuizGenerationAgent",
@@ -167,7 +167,7 @@ def quiz_generation_beginner_agent(sys_prompts_config):
                   component_name="quiz_generation_beginner_agent")
         return log_str
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
     return client.create_agent(
         name="QuizGenerationBeginnerAgent",
@@ -219,7 +219,7 @@ def quiz_generation_specialist_agent(sys_prompts_config):
                   component_name="quiz_generation_specialist_agent")
         return log_str
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
     return client.create_agent(
         name="QuizGenerationSpecialistAgent",
@@ -269,7 +269,7 @@ def quiz_generation_expert_agent(sys_prompts_config):
                   component_name="quiz_generation_expert_agent")
         return log_str
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
     return client.create_agent(
         name="QuizGenerationExpertAgent",

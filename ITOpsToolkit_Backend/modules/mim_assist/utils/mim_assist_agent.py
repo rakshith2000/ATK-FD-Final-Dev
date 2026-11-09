@@ -107,7 +107,7 @@ def tech_tower_identifier_agent(sys_prompts_config):
         return log_str
 
     # Deterministic + strict schema. API guarantees {title, content:[...]}.
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
 
 
@@ -138,7 +138,7 @@ async def initial_diagnosis_agent(sys_prompts_config, mcp_tool):
         return log_str
 
     # Deterministic + strict schema. API guarantees {title, content:[...]}.
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
     # client._litellm_params["response_format"] = InitialDiagnosisResponseModel
 
 
@@ -171,7 +171,7 @@ async def mim_assist_chatbot(sys_prompts_config, mcp_tool):
                   component_name = "mim_assist_agent - mim_assist_chatbot")
         return log_str
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
     client._litellm_params["response_format"] = ChatBotStructuredResponse
 
     return client.create_agent(
@@ -201,7 +201,7 @@ def summary_agent(sys_prompts_config):
         return log_str
 
     # Deterministic + strict schema. API guarantees {title, content:[...]}.
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1
 
 
 

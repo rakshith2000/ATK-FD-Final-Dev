@@ -1,5 +1,6 @@
 import os
 import re
+import logging
 import json
 import time
 import urllib.parse
@@ -120,6 +121,10 @@ class ScopeDenied(Exception):
                 "detail": self.detail,
             },
             "status": "failure",
+            # Marker for the HTTP layer. A 403 raised here already carries an
+            # accurate reason, so it must NOT be relabelled as an upstream
+            # credential failure the way a genuine ServiceNow 401/403 is.
+            "scope_denied": True,
         })
 
 
@@ -216,6 +221,45 @@ class ServiceNow:
 
         return response.json().get("result", [])
 
+    def _attachment_metadata(self, itsm_details, attachment_sys_id):
+        """
+        Resolve an attachment's parent record through the Attachment API
+        (/api/now/attachment/<sys_id>) rather than the sys_attachment table.
+
+        ServiceNow gates these separately: a service account can hold rights to
+        the Attachment API while having no Table API read ACL on sys_attachment.
+        Querying the table in that case returns an empty result, which is
+        indistinguishable from "this attachment does not exist" and produced a
+        misleading denial.
+
+        Returns the metadata dict, or None if it cannot be read.
+        """
+
+        url = f"{itsm_details.itsm_url}/api/now/attachment/{attachment_sys_id}"
+
+        response = self._request(
+            method = "get",
+            url = url,
+            itsm_details = itsm_details,
+            headers = self.headers,
+            verify = False
+        )
+
+        if response.status_code >= 400:
+            return None
+
+        try:
+            result = response.json().get("result")
+        except Exception:
+            return None
+
+        # /attachment/<sys_id> returns a single object; the list form
+        # (/attachment?sys_id=...) returns a one-element array.
+        if isinstance(result, list):
+            result = result[0] if result else None
+
+        return result if isinstance(result, dict) else None
+
     def _caller_identity(self, itsm_details, caller):
         """
         Resolve the Keycloak username to a ServiceNow sys_id plus the sys_ids of
@@ -297,6 +341,46 @@ class ServiceNow:
 
         return _cache_put(f"kb::{user_sys_id}", kb_ids)
 
+    def _allowed_kb_ids(self, itsm_details, user_sys_id):
+        """
+        Knowledge bases the caller may read.
+
+        Two sources, and missing the second one causes false denials:
+          1. bases granted through the caller's own user_criteria
+          2. bases that carry NO read criteria at all - in ServiceNow those are
+             open to every knowledge user, and because they have no rows in
+             kb_uc_can_read_mtom they can never show up in (1).
+        """
+
+        cached = _cache_get(f"kballowed::{user_sys_id}")
+        if cached is not None:
+            return cached
+
+        granted = set(self._readable_kb_ids(itsm_details, user_sys_id))
+
+        all_bases = self._raw_get(
+            itsm_details,
+            "kb_knowledge_base",
+            "sysparm_fields=sys_id&sysparm_limit=500&sysparm_exclude_reference_link=true"
+        )
+        all_ids = {b.get("sys_id") for b in all_bases if b.get("sys_id")}
+
+        restricted_rows = self._raw_get(
+            itsm_details,
+            "kb_uc_can_read_mtom",
+            "sysparm_fields=kb_knowledge_base&sysparm_limit=2000&sysparm_exclude_reference_link=true"
+        )
+
+        restricted = set()
+        for row in restricted_rows:
+            value = row.get("kb_knowledge_base")
+            if isinstance(value, dict):
+                value = value.get("value")
+            if value:
+                restricted.add(value)
+
+        return _cache_put(f"kballowed::{user_sys_id}", sorted(granted | (all_ids - restricted)))
+
     @staticmethod
     def _ownership_clause(table_name, user_sys_id, group_ids):
         """`assigned_to=me ^OR assignment_group IN my-groups ^OR opened_by=me`"""
@@ -311,6 +395,57 @@ class ServiceNow:
                 parts.append(f"{field}={user_sys_id}")
 
         return "^OR".join(parts)
+
+    def _parent_visible(self, itsm_details, parent_table, parent_sys_id, user_sys_id, group_ids):
+        """
+        Single decision point for "may this caller see record X of table Y".
+
+        Attachments, journal entries, audit rows and SLAs all inherit visibility
+        from a parent, and that parent is not always a ticket - Knowledge Assist
+        attaches images to kb_knowledge articles, which have no assigned_to or
+        assignment_group at all. Those are judged on knowledge-base readability
+        instead, the same rule applied to the articles themselves.
+        """
+
+        if not parent_sys_id:
+            return False
+
+        if parent_table == KB_TABLE:
+            # Resolve the article's knowledge base, then test readability.
+            # Filtering the article query by an IN list would hide the reason a
+            # lookup came back empty (wrong base vs. article does not exist).
+            rows = self._raw_get(
+                itsm_details,
+                KB_TABLE,
+                "sysparm_query=" + urllib.parse.quote(f"sys_id={parent_sys_id}")
+                + "&sysparm_fields=kb_knowledge_base&sysparm_limit=1&sysparm_exclude_reference_link=true"
+            )
+
+            if not rows:
+                return False
+
+            kb_base = rows[0].get("kb_knowledge_base")
+            if isinstance(kb_base, dict):
+                kb_base = kb_base.get("value")
+
+            return bool(kb_base) and kb_base in self._allowed_kb_ids(itsm_details, user_sys_id)
+
+        # Anything task-derived (incident, problem, sc_request, change_request,
+        # sc_req_item, *_task ...) is reachable through the task base table,
+        # which carries assigned_to / assignment_group / opened_by.
+        if parent_table not in OWNERSHIP_TABLES:
+            parent_table = "task"
+
+        clause = self._ownership_clause(parent_table, user_sys_id, group_ids)
+
+        rows = self._raw_get(
+            itsm_details,
+            parent_table,
+            "sysparm_query=" + urllib.parse.quote(f"sys_id={parent_sys_id}^{clause}")
+            + "&sysparm_fields=sys_id&sysparm_limit=1&sysparm_exclude_reference_link=true"
+        )
+
+        return bool(rows)
 
     @staticmethod
     def _split_query(query_string):
@@ -350,36 +485,22 @@ class ServiceNow:
                 # sys_attachment names its parent table in the same query
                 parent_table = terms.get("table_name", "task")
 
-            if parent_table not in OWNERSHIP_TABLES:
-                parent_table = "task"
-
             cache_key = f"parent::{user_sys_id}::{parent_table}::{parent_sys_id}"
-            cached = _cache_get(cache_key)
-            if cached is not None:
-                if cached:
-                    return
-                raise ScopeDenied(
-                    "You do not have access to the parent record.",
-                    f"{parent_table} {parent_sys_id} is not assigned to you or your groups."
+            visible = _cache_get(cache_key)
+
+            if visible is None:
+                visible = _cache_put(
+                    cache_key,
+                    self._parent_visible(itsm_details, parent_table, parent_sys_id, user_sys_id, group_ids)
                 )
 
-            clause = self._ownership_clause(parent_table, user_sys_id, group_ids)
-            rows = self._raw_get(
-                itsm_details,
-                parent_table,
-                "sysparm_query=" + urllib.parse.quote(f"sys_id={parent_sys_id}^{clause}")
-                + "&sysparm_fields=sys_id&sysparm_limit=1&sysparm_exclude_reference_link=true"
+            if visible:
+                return
+
+            raise ScopeDenied(
+                "You do not have access to the parent record.",
+                f"{parent_table} {parent_sys_id} is not visible to you."
             )
-
-            _cache_put(cache_key, bool(rows))
-
-            if not rows:
-                raise ScopeDenied(
-                    "You do not have access to the parent record.",
-                    f"{parent_table} {parent_sys_id} is not assigned to you or your groups."
-                )
-
-            return
 
         raise ScopeDenied(
             f"Requests to '{table_name}' must identify a parent record.",
@@ -416,11 +537,11 @@ class ServiceNow:
             return self._rebuild_query(pairs, snow_query)
 
         if table_name == KB_TABLE:
-            kb_ids = self._readable_kb_ids(itsm_details, user_sys_id)
+            kb_ids = self._allowed_kb_ids(itsm_details, user_sys_id)
             if not kb_ids:
                 raise ScopeDenied(
                     "You have no readable knowledge bases in ServiceNow.",
-                    "No user_criteria records grant this account read access to any knowledge base."
+                    "No user_criteria records grant this account read access, and every knowledge base carries read criteria."
                 )
             clause = f"kb_knowledge_baseIN{','.join(kb_ids)}"
             snow_query = f"{snow_query}^{clause}" if snow_query else clause
@@ -479,7 +600,7 @@ class ServiceNow:
                 except ScopeDenied as denial:
                     log_event(
                         application_logger,
-                        "WARNING",
+                        logging.WARNING,
                         f"Scope denied for {caller} on {table_name} - {denial.message}",
                         module_name = module_name,
                         component_type = "itsm_connector_operations",
@@ -511,7 +632,7 @@ class ServiceNow:
 
             log_event(
                 application_logger,
-                "ERROR",
+                logging.ERROR,
                 str(e),
                 module_name = module_name,
                 component_type = "itsm_connector_operations",
@@ -550,7 +671,7 @@ class ServiceNow:
                 except ScopeDenied as denial:
                     log_event(
                         application_logger,
-                        "WARNING",
+                        logging.WARNING,
                         f"Scope denied for {caller} on stats/{table_name} - {denial.message}",
                         module_name = module_name,
                         component_type = "itsm_connector_operations",
@@ -577,7 +698,7 @@ class ServiceNow:
 
             log_event(
                 application_logger,
-                "ERROR",
+                logging.ERROR,
                 str(e),
                 module_name = module_name,
                 component_type = "itsm_connector_operations",
@@ -598,37 +719,30 @@ class ServiceNow:
 
         (user_sys_id, group_ids) = self._caller_identity(itsm_details, caller)
 
-        rows = self._raw_get(
-            itsm_details,
-            "sys_attachment",
-            "sysparm_query=" + urllib.parse.quote(f"sys_id={attachment_sys_id}")
-            + "&sysparm_fields=table_name,table_sys_id&sysparm_limit=1&sysparm_exclude_reference_link=true"
-        )
+        metadata = self._attachment_metadata(itsm_details, attachment_sys_id)
 
-        if not rows:
+        if not metadata:
             raise ScopeDenied(
                 "Attachment not found.",
-                f"No sys_attachment record with sys_id {attachment_sys_id}."
+                f"The Attachment API returned no record for sys_id {attachment_sys_id}."
             )
 
-        parent_table = rows[0].get("table_name") or "task"
-        parent_sys_id = rows[0].get("table_sys_id")
+        parent_table = metadata.get("table_name") or "task"
+        parent_sys_id = metadata.get("table_sys_id")
 
-        if parent_table not in OWNERSHIP_TABLES:
-            parent_table = "task"
+        cache_key = f"parent::{user_sys_id}::{parent_table}::{parent_sys_id}"
+        visible = _cache_get(cache_key)
 
-        clause = self._ownership_clause(parent_table, user_sys_id, group_ids)
-        parents = self._raw_get(
-            itsm_details,
-            parent_table,
-            "sysparm_query=" + urllib.parse.quote(f"sys_id={parent_sys_id}^{clause}")
-            + "&sysparm_fields=sys_id&sysparm_limit=1&sysparm_exclude_reference_link=true"
-        )
+        if visible is None:
+            visible = _cache_put(
+                cache_key,
+                self._parent_visible(itsm_details, parent_table, parent_sys_id, user_sys_id, group_ids)
+            )
 
-        if not parents:
+        if not visible:
             raise ScopeDenied(
                 "You do not have access to this attachment.",
-                f"Its parent {parent_table} record is not assigned to you or your groups."
+                f"Its parent {parent_table} record is not visible to you."
             )
 
     def execute_attachment_download(self, sys_id, module_name = "itsm", caller = None):
@@ -659,7 +773,7 @@ class ServiceNow:
                 except ScopeDenied as denial:
                     log_event(
                         application_logger,
-                        "WARNING",
+                        logging.WARNING,
                         f"Scope denied for {caller} on attachment {sys_id} - {denial.message}",
                         module_name = module_name,
                         component_type = "itsm_connector_operations",
@@ -691,7 +805,7 @@ class ServiceNow:
 
             log_event(
                 application_logger,
-                "ERROR",
+                logging.ERROR,
                 str(e),
                 module_name = module_name,
                 component_type = "itsm_connector_operations",
@@ -728,26 +842,16 @@ class ServiceNow:
                     # someone else's record - same ownership test as a read.
                     (user_sys_id, group_ids) = self._caller_identity(itsm_connector_details, caller)
 
-                    parent_table = table_name if table_name in OWNERSHIP_TABLES else "task"
-                    clause = self._ownership_clause(parent_table, user_sys_id, group_ids)
-
-                    parents = self._raw_get(
-                        itsm_connector_details,
-                        parent_table,
-                        "sysparm_query=" + urllib.parse.quote(f"sys_id={table_sys_id}^{clause}")
-                        + "&sysparm_fields=sys_id&sysparm_limit=1&sysparm_exclude_reference_link=true"
-                    )
-
-                    if not parents:
+                    if not self._parent_visible(itsm_connector_details, table_name, table_sys_id, user_sys_id, group_ids):
                         raise ScopeDenied(
                             "You do not have access to the record you are attaching to.",
-                            f"{parent_table} {table_sys_id} is not assigned to you or your groups."
+                            f"{table_name} {table_sys_id} is not visible to you."
                         )
 
                 except ScopeDenied as denial:
                     log_event(
                         application_logger,
-                        "WARNING",
+                        logging.WARNING,
                         f"Scope denied for {caller} uploading to {table_name}/{table_sys_id} - {denial.message}",
                         module_name = module_name,
                         component_type = "itsm_connector_operations",
@@ -778,7 +882,7 @@ class ServiceNow:
 
             log_event(
                 application_logger,
-                "ERROR",
+                logging.ERROR,
                 str(e),
                 module_name = module_name,
                 component_type = "itsm_connector_operations",
