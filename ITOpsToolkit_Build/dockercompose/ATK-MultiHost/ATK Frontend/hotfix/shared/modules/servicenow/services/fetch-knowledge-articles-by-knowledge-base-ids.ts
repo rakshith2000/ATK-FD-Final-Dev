@@ -4,42 +4,46 @@ import logger from '@/shared/utils/logger';
 import { withApiResponseHandler } from '@/api/utils/with-api-response-handler-hof';
 import type { KnowledgeArticle, CategoryCount, ArticleCountItem } from '../types/knowledge';
 
-// const fetchKnowledgeArticlesByKnowledgeBaseIds = async ({
-//     getOnlyRecentKbs,
-//     knowledgeBaseIds,
-//     limit,
-// }: {
-//     knowledgeBaseIds: Array<string>;
-//     getOnlyRecentKbs: boolean;
-//     limit?: number;
-// }): Promise<Array<KnowledgeArticle>> => {
-//     let sysparm_query = `workflow_state=published^kb_knowledge_baseIN${knowledgeBaseIds.join(',')}`;
+const fetchKnowledgeArticlesByKnowledgeBaseIds = async ({
+    getOnlyRecentKbs,
+    knowledgeBaseIds,
+    limit,
+}: {
+    knowledgeBaseIds: Array<string>;
+    getOnlyRecentKbs: boolean;
+    limit?: number;
+}): Promise<Array<KnowledgeArticle>> => {
+    return withApiResponseHandler<Array<KnowledgeArticle>>(async () => {
+        let sysparm_query = `workflow_state=published^kb_knowledge_baseIN${knowledgeBaseIds.join(',')}`;
 
-//     if (getOnlyRecentKbs) {
-//         sysparm_query = sysparm_query + '^ORDERBYDESCsys_created_on';
-//     }
+        if (getOnlyRecentKbs) {
+            sysparm_query += '^ORDERBYDESCsys_created_on';
+        }
 
-//     const response = await serviceNowApiClient.get(appConfig.serviceNow.api.knowledgeTable, {
-//         params: {
-//             sysparm_query: sysparm_query,
-//             sysparm_fields: 'sys_id,rating,number,sys_created_on,text,short_description,kb_knowledge_base,workflow_state,kb_category,author',
-//             sysparm_display_value: 'all',
-//             ...(limit ? { sysparm_limit: limit } : {}),
-//         },
-//     });
+        const response = await serviceNowApiClient.get(appConfig.serviceNow.api.knowledgeTable, {
+            params: {
+                sysparm_query,
+                sysparm_fields: 'sys_id,rating,number,sys_created_on,short_description,kb_knowledge_base,workflow_state,kb_category,author',
+                sysparm_display_value: 'all',
+                ...(limit ? { sysparm_limit: limit } : {}),
+            },
+        });
 
-//     const results = response?.data?.result;
+        if ('result' in response?.data && Array.isArray(response.data.result)) {
+            return response.data.result.map((article: KnowledgeArticle) => ({
+                ...article,
+                text: article.text ?? { display_value: '', value: '' },
+            }));
+        }
 
-//     if (isKnowledgeArticleArray(results)) {
-//         return results;
-//     }
-
-//     throw new Error('Unable to retrieve the knowledge articles list from Service Now, failed to validate the response JSON Schema !', {
-//         cause: {
-//             reason: 'response?.data?.result schema is invalid !',
-//         },
-//     });
-// };
+        logger.debug('Knowledge articles fetch failed', { responseData: response?.data });
+        throw new Error('Unable to retrieve the knowledge articles list from Service Now !', {
+            cause: {
+                reason: 'response?.data?.result schema is invalid!',
+            },
+        });
+    });
+};
 
 const fetchKnowledgeArticlesCategoryCountByKnowledgeBaseIds = async (knowledgeBaseIds: Array<string>): Promise<Array<CategoryCount>> => {
     return withApiResponseHandler<Array<CategoryCount>>(async () => {
@@ -131,5 +135,5 @@ export const fetchKbArticlesByCategory = async ({
     });
 };
 
-// export default fetchKnowledgeArticlesByKnowledgeBaseIds;
+export default fetchKnowledgeArticlesByKnowledgeBaseIds;
 export { fetchKnowledgeArticlesCategoryCountByKnowledgeBaseIds };
