@@ -2,11 +2,11 @@ import { withApiResponseHandler } from '@/api/utils/with-api-response-handler-ho
 import { getAuthProviderInstance } from '@/shared/modules/auth/utils/get-auth-provider-instance';
 import fetchSnowUserCriteriaIdsBySysId from './fetch-snow-user-criteria-ids-by-user-sys-id';
 import fetchUserReadableKnowledgeBaseIdsByUserCriteria from './fetch-user-readable-knowledge-base-ids-by-user-criteria';
-import { fetchKnowledgeArticlesCategoryCountByKnowledgeBaseIds } from './fetch-knowledge-articles-by-knowledge-base-ids';
+import { fetchKnowledgeArticlesCategoryCountByKnowledgeBaseIds, type CategoryCount } from './fetch-knowledge-articles-by-knowledge-base-ids';
 import serviceNowApiClient from '@/api/axios-clients/service-now-api/service-now-api-client';
 import { appConfig } from '@/config/app-config';
 import logger from '@/shared/utils/logger';
-import type { KnowledgeArticle, CategoryCount } from '../types/knowledge';
+import type { KnowledgeArticle } from '../types/knowledge';
 
 const fetchUserReadableKnowledgeCategoryCounts = async (): Promise<Array<CategoryCount>> => {
     return withApiResponseHandler<Array<CategoryCount>>(async () => {

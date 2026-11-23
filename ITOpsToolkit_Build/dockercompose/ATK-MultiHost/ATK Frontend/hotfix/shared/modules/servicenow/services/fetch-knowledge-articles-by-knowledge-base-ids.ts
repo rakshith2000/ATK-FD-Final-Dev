@@ -2,7 +2,24 @@ import serviceNowApiClient from '@/api/axios-clients/service-now-api/service-now
 import { appConfig } from '@/config/app-config';
 import logger from '@/shared/utils/logger';
 import { withApiResponseHandler } from '@/api/utils/with-api-response-handler-hof';
-import type { KnowledgeArticle, CategoryCount, ArticleCountItem } from '../types/knowledge';
+import type { KnowledgeArticle } from '../types/knowledge';
+
+export interface CategoryCount {
+    categorySysId: string | null;
+    categoryId: string | null;
+    categoryName: string;
+    count: number;
+}
+
+interface ArticleCountItem {
+    groupby_fields?: Array<{
+        value?: string;
+        display_value?: string;
+    }>;
+    stats?: {
+        count?: string | number;
+    };
+}
 
 const fetchKnowledgeArticlesByKnowledgeBaseIds = async ({
     getOnlyRecentKbs,
