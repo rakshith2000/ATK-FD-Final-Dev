@@ -46,6 +46,7 @@ import { Route as appApptransitionAiTransitionAiIndexRouteImport } from './route
 import { Route as appApptransitionAiTransitionAiKnowledgeAiRouteImport } from './routes/(app)/_app/(transition-ai)/transition-ai/knowledge-ai'
 import { Route as appApptransitionAiTransitionAiKnowledgeBrowserRouteImport } from './routes/(app)/_app/(transition-ai)/transition-ai/knowledge-browser'
 import { Route as appApptransitionAiTransitionAiMeetingAiRouteImport } from './routes/(app)/_app/(transition-ai)/transition-ai/meeting-ai'
+import { Route as appApptutorialTutorialIndexRouteImport } from './routes/(app)/_app/(tutorial)/tutorial/index'
 import { Route as appAppadminstrationSettingsFormManagementIndexRouteImport } from './routes/(app)/_app/(adminstration)/settings/form-management/index'
 import { Route as appAppadminstrationSettingsFormManagementFormCodeRouteImport } from './routes/(app)/_app/(adminstration)/settings/form-management/$formCode'
 import { Route as appAppadminstrationSettingsFormManagementNewRouteImport } from './routes/(app)/_app/(adminstration)/settings/form-management/new'
@@ -288,6 +289,12 @@ const appApptransitionAiTransitionAiMeetingAiRoute =
     id: '/meeting-ai',
     path: '/meeting-ai',
     getParentRoute: () => appApptransitionAiTransitionAiRoute,
+  } as any)
+const appApptutorialTutorialIndexRoute =
+  appApptutorialTutorialIndexRouteImport.update({
+    id: '/(tutorial)/tutorial/',
+    path: '/tutorial/',
+    getParentRoute: () => appAppRoute,
   } as any)
 const appAppadminstrationSettingsFormManagementIndexRoute =
   appAppadminstrationSettingsFormManagementIndexRouteImport.update({
@@ -1169,6 +1176,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/transition-ai/meeting-ai'
       preLoaderRoute: typeof appApptransitionAiTransitionAiMeetingAiRouteImport
       parentRoute: typeof appApptransitionAiTransitionAiRoute
+    }
+    '/(app)/_app/(tutorial)/tutorial/': {
+      id: '/(app)/_app/(tutorial)/tutorial/'
+      path: '/tutorial'
+      fullPath: '/tutorial/'
+      preLoaderRoute: typeof appApptutorialTutorialIndexRouteImport
+      parentRoute: typeof appAppRoute
     }
     '/(app)/_app/(adminstration)/settings/form-management/': {
       id: '/(app)/_app/(adminstration)/settings/form-management/'

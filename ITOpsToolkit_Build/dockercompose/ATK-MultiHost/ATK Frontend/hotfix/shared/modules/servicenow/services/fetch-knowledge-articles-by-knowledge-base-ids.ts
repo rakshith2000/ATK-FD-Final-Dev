@@ -64,7 +64,12 @@ const fetchKnowledgeArticlesByKnowledgeBaseIds = async ({
 
 const fetchKnowledgeArticlesCategoryCountByKnowledgeBaseIds = async (knowledgeBaseIds: Array<string>): Promise<Array<CategoryCount>> => {
     return withApiResponseHandler<Array<CategoryCount>>(async () => {
-        const response = await serviceNowApiClient.get(appConfig.serviceNow.api.knowledgeArticlescount, {
+        const countEndpoint: unknown = appConfig.serviceNow.api.knowledgeArticlescount;
+        if (typeof countEndpoint !== 'string' || countEndpoint.length === 0) {
+            throw new Error('Knowledge articles count endpoint is missing or invalid in the ServiceNow configuration.');
+        }
+
+        const response = await serviceNowApiClient.get(countEndpoint, {
             params: {
                 sysparm_count: true,
                 sysparm_group_by: 'kb_category',
