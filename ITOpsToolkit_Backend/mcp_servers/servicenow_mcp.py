@@ -8,6 +8,8 @@ import json
 import logging
 import datetime
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urlencode
 
 # Third party packages
 import yaml
@@ -851,7 +853,7 @@ class ServiceNow():
         return (True, output)
 
     # List all knowledge articles accessible to user
-    def list_knowledge_articles(self, itsm_tags, user, module_name = "itsm", date_filter = None):
+    def list_knowledge_articles(self, itsm_tags, user, module_name = "itsm", date_filter = None, include_text = False):
         db_local_session = db_session.get_db()
         itsm_tag_list = []
         for itsm_tag in itsm_tags.split(","):
@@ -866,44 +868,75 @@ class ServiceNow():
             if itsm_connector_details is None:
                 continue
 
+            cfg = itsm_connector_details.itsm_additional_config or {}
+            try:
+                criteria_page_size = int(cfg.get("USER_CRITERIA_PAGE_SIZE", 500))
+                criteria_chunk_size = int(cfg.get("KB_USER_CRITERIA_CHUNK_SIZE", 100))
+                page_size = int(cfg.get("KB_PAGE_SIZE", 200 if include_text else 1000))
+                max_workers = int(cfg.get("KB_FETCH_WORKERS", 10))
+                if min(criteria_page_size, criteria_chunk_size, page_size, max_workers) < 1:
+                    raise ValueError("Pagination and worker settings must be positive integers")
+            except (TypeError, ValueError) as e:
+                flag = 1
+                log_event(application_logger,
+                          logging.ERROR,
+                          f"Invalid knowledge article fetch configuration for ITSM {itsm_tag} - {str(e)}",
+                          module_name = module_name,
+                          component_type = "itsm_connector_operations",
+                          component_name = "servicenow_mcp - list_knowledge_articles")
+                continue
+
             status, user_details = self.get_user_details(itsm_tags = itsm_tag, user = user)
 
             if not status or not user_details:
                 continue
 
             user_sys_id = user_details.get("sys_id")
-            target_url = itsm_connector_details.itsm_url + "/api/now/table/user_criteria"
-
-            filters = {}
-            filters["sysparm_query"] = f"user.sys_id={user_sys_id}"
-            filters["sysparm_fields"] = itsm_connector_details.itsm_additional_config.get("USER_CRITERIA_FIELDS", "sys_id,name")
-            filters["sysparm_display_value"] = "true"
-
-            if filters != {}:
-                target_url += "?"
-
-            for fl_nm, fl_val in filters.items():
-                target_url += fl_nm + "=" + fl_val + "&"
-
-            target_url = target_url[:-1]
-
             try:
-                response = self._request("get", target_url, itsm_connector_details, headers = self.headers, verify = False)
+                base_url = itsm_connector_details.itsm_url.rstrip("/")
 
-                if "error" in response.json():
-                    error = response.json()["error"]
+                def fetch_records(table, query, fields, display_value, limit, offset):
+                    target_url = f"{base_url}/api/now/table/{table}"
+                    params = {
+                        "sysparm_query": query,
+                        "sysparm_fields": fields,
+                        "sysparm_display_value": display_value,
+                        "sysparm_limit": limit,
+                        "sysparm_offset": offset,
+                    }
+                    response = self._request(
+                        "get",
+                        f"{target_url}?{urlencode(params)}",
+                        itsm_connector_details,
+                        headers = self.headers,
+                        verify = False,
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                    if "error" in payload:
+                        raise RuntimeError(payload["error"].get("message", "ServiceNow returned an error"))
+                    records = payload.get("result")
+                    if not isinstance(records, list):
+                        raise RuntimeError(f"Unexpected result from ServiceNow table {table}")
+                    return response, records
 
-                    # Application logging
-                    log_event(application_logger,
-                              logging.ERROR,
-                              f"User criteria retrieval failed for ITSM {itsm_tag} - {error.get('message', '')}",
-                              module_name = module_name,
-                              component_type = "itsm_connector_operations",
-                              component_name = "servicenow_mcp - list_knowledge_articles")
+                criteria_list = []
+                criteria_offset = 0
+                criteria_fields = cfg.get("USER_CRITERIA_FIELDS", "sys_id,name")
+                while True:
+                    _, criteria_page = fetch_records(
+                        "user_criteria",
+                        f"user.sys_id={user_sys_id}^ORDERBYsys_id",
+                        criteria_fields,
+                        "true",
+                        criteria_page_size,
+                        criteria_offset,
+                    )
+                    criteria_list.extend(criteria_page)
+                    if len(criteria_page) < criteria_page_size:
+                        break
+                    criteria_offset += criteria_page_size
 
-                    continue
-
-                criteria_list = response.json().get("result", [])
                 criteria_ids = [item.get("sys_id") for item in criteria_list if item.get("sys_id")]
 
                 if not criteria_ids:
@@ -920,31 +953,56 @@ class ServiceNow():
                           component_name = "itsm_utils - list_knowledge_articles")
 
                 continue
-            allowed_kb_bases = [x.strip() for x in itsm_connector_details.itsm_additional_config.get("KB_BASES", "ITOpsToolkit, Knowledge, IT, Knowledge Assist").split(",")]
+            allowed_kb_bases = [
+                value.strip()
+                for value in cfg.get("KB_BASES", "ITOpsToolkit, Knowledge, IT, Knowledge Assist").split(",")
+                if value.strip()
+            ]
+            if not allowed_kb_bases:
+                continue
+            criteria_ids = list(dict.fromkeys(criteria_ids))
+            criteria_chunks = [
+                criteria_ids[index:index + criteria_chunk_size]
+                for index in range(0, len(criteria_ids), criteria_chunk_size)
+            ]
 
-            target_url = itsm_connector_details.itsm_url + "/api/now/table/kb_uc_can_read_mtom"
+            def fetch_kb_bases(criteria_chunk):
+                query = (
+                    f"user_criteriaIN{','.join(criteria_chunk)}"
+                    f"^kb_knowledge_base.titleIN{','.join(allowed_kb_bases)}"
+                    "^ORDERBYsys_id"
+                )
+                fields = cfg.get("KB_UC_CAN_READ_FIELDS", "kb_knowledge_base,user_criteria")
+                offset = 0
+                records = []
+                while True:
+                    _, page = fetch_records(
+                        "kb_uc_can_read_mtom",
+                        query,
+                        fields,
+                        "all",
+                        page_size,
+                        offset,
+                    )
+                    records.extend(page)
+                    if len(page) < page_size:
+                        break
+                    offset += page_size
+                return records
 
-            filters = {}
-            filters["sysparm_query"] = f"user_criteriaIN{",".join(criteria_ids)}^kb_knowledge_base.titleIN{",".join(allowed_kb_bases)}"
-            filters["sysparm_fields"] = itsm_connector_details.itsm_additional_config.get("KB_UC_CAN_READ_FIELDS", "kb_knowledge_base,user_criteria")
-            filters["sysparm_display_value"] = "all"
-
-            if filters != {}:
-                target_url += "?"
-
-            for fl_nm, fl_val in filters.items():
-                target_url += fl_nm + "=" + fl_val + "&"
-
-            target_url = target_url[:-1]
-
+            kb_bases_data = []
             try:
-                response = self._request("get", target_url, itsm_connector_details, headers = self.headers, verify = False)
-                kb_bases_data = response.json().get("result", [])
-                kb_base_ids = list({item["kb_knowledge_base"]["value"] for item in kb_bases_data if item.get("kb_knowledge_base")})
+                with ThreadPoolExecutor(max_workers = max_workers) as pool:
+                    futures = [pool.submit(fetch_kb_bases, chunk) for chunk in criteria_chunks]
+                    for future in as_completed(futures):
+                        kb_bases_data.extend(future.result())
 
-                
-                
-                
+                kb_base_ids = list({
+                    item["kb_knowledge_base"]["value"]
+                    for item in kb_bases_data
+                    if isinstance(item.get("kb_knowledge_base"), dict)
+                    and item["kb_knowledge_base"].get("value")
+                })
                 if not kb_base_ids:
                     continue
             except Exception as e:
@@ -957,46 +1015,88 @@ class ServiceNow():
                           module_name = module_name,
                           component_type = "itsm_connector_operations",
                           component_name = "itsm_utils - list_knowledge_articles")
-                
+
                 continue
 
-            
-            # Get published KB articles for those knowledge bases
-            target_url = itsm_connector_details.itsm_url + "/api/now/table/kb_knowledge"
-            filters = {}
-            filters["sysparm_query"] = f"workflow_state=published^kb_knowledge_baseIN{",".join(kb_base_ids)}"
+            article_query = f"workflow_state=published^kb_knowledge_baseIN{','.join(kb_base_ids)}"
             if date_filter:
-                # filters["sysparm_query"] += f"^sys_created_on>{date_filter}"
-                filters["sysparm_query"] += f"^sys_updated_on>{date_filter}"
-            filters["sysparm_fields"] = itsm_connector_details.itsm_additional_config.get("LIST_KB_ARTICLES_FIELDS", "sys_id,rating,number,sys_created_on,text,short_description,kb_knowledge_base,workflow_state,kb_category,author")
-            filters["sysparm_display_value"] = "all"
+                article_query += f"^sys_updated_on>{date_filter}"
+            article_query += "^ORDERBYsys_id"
 
-            if filters != {}:
-                target_url += "?"
+            article_field_names = [
+                field.strip()
+                for field in cfg.get(
+                    "LIST_KB_ARTICLES_FIELDS",
+                    "sys_id,rating,number,sys_created_on,text,short_description,kb_knowledge_base,workflow_state,kb_category,author",
+                ).split(",")
+                if field.strip() and field.strip() != "text"
+            ]
+            if "sys_id" not in article_field_names:
+                article_field_names.append("sys_id")
+            if include_text:
+                article_field_names.append("text")
+            article_fields = ",".join(article_field_names)
 
-            for fl_nm, fl_val in filters.items():
-                target_url += fl_nm + "=" + fl_val + "&"
-
-            target_url = target_url[:-1]
+            def fetch_article_page(offset):
+                response, records = fetch_records(
+                    "kb_knowledge",
+                    article_query,
+                    article_fields,
+                    "all",
+                    page_size,
+                    offset,
+                )
+                return offset, response, records
 
             try:
-                response = self._request("get", target_url, itsm_connector_details, headers = self.headers, verify = False)
-                if "error" in response.json():
-                    error = response.json()["error"]
+                _, first_response, first_page = fetch_article_page(0)
+                pages = {0: first_page}
+                total_count_header = first_response.headers.get("X-Total-Count")
 
-                    # Application logging
-                    log_event(application_logger,
-                              logging.ERROR,
-                              f"Knowledge articles listing failed for ITSM {itsm_tag} - {error.get('message', '')}",
-                              module_name = module_name,
-                              component_type = "itsm_connector_operations",
-                              component_name = "servicenow_mcp - list_knowledge_articles")
+                if total_count_header is not None:
+                    total_count = int(total_count_header)
+                    if total_count < len(first_page):
+                        raise RuntimeError("ServiceNow returned an invalid X-Total-Count header")
 
-                    continue                  
+                    offsets = range(page_size, total_count, page_size)
+                    with ThreadPoolExecutor(max_workers = max_workers) as pool:
+                        futures = [pool.submit(fetch_article_page, offset) for offset in offsets]
+                        for future in as_completed(futures):
+                            offset, _, page = future.result()
+                            pages[offset] = page
+                else:
+                    # Some ServiceNow instances omit X-Total-Count; retain complete results
+                    # by continuing offset pagination sequentially in that case.
+                    offset = page_size
+                    while len(pages[offset - page_size]) == page_size:
+                        _, _, page = fetch_article_page(offset)
+                        pages[offset] = page
+                        offset += page_size
 
-                result = response.json().get("result", [])
-                if result:
-                    output += result
+                all_articles = []
+                seen_sys_ids = set()
+                for offset in sorted(pages):
+                    for article in pages[offset]:
+                        sys_id = article.get("sys_id")
+                        if isinstance(sys_id, dict):
+                            sys_id = sys_id.get("value")
+                        if sys_id and sys_id in seen_sys_ids:
+                            continue
+                        if sys_id:
+                            seen_sys_ids.add(sys_id)
+                        all_articles.append(article)
+
+                dict_fields = (
+                    "rating", "number", "short_description", "author",
+                    "kb_category", "kb_knowledge_base", "text", "workflow_state",
+                )
+                for article in all_articles:
+                    for field in dict_fields:
+                        value = article.get(field)
+                        if not isinstance(value, dict):
+                            article[field] = {"display_value": value or "", "value": ""}
+
+                output.extend(all_articles)
             except Exception as e:
                 flag = 1
 
@@ -1006,12 +1106,12 @@ class ServiceNow():
                           f"Knowledge articles listing failed for ITSM {itsm_tag} - {str(e)}",
                           module_name = module_name,
                           component_type = "itsm_connector_operations",
-                          component_name = "itsm_utils - list_knowledge_articles")
+                          component_name = "servicenow_mcp - list_knowledge_articles")
 
                 continue
 
         db_local_session.close()
-        if output == [] and flag == 1:
+        if flag == 1:
             return (False, "Knowledge articles listing failed in ITSM. Please check application logs.")
 
         return (True, output)
@@ -2667,6 +2767,4 @@ if __name__ == "__main__":
     # print(obj.get_parents_children("Lab_instance", "55c3578bc0a8010e0117f727897d0011", "parent"))
     # print(obj.get_service_map_details("Lab_instance", "bond_trade_ny"))
     mcp.run(transport = "http", host = "0.0.0.0", port = 6000)
-
-
 

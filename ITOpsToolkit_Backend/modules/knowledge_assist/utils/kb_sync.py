@@ -304,7 +304,7 @@ class ServiceNowKnowledgeSync:
         # Fetch published articles from ServiceNow using existing ServiceNow method
         (status, articles) = itsm_obj.list_knowledge_articles(
             itsm_tags = itsm_tags_str, user = sync_user, module_name = MODULE_NAME,
-            date_filter = date_filter,
+            date_filter = date_filter, include_text = True,
         )
         
         if not status or not articles:
