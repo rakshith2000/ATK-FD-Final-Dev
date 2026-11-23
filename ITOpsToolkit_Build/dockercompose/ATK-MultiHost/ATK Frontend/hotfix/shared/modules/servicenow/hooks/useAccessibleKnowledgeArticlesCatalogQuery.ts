@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import fetchUserReadableKnowledgeCategoryCounts from '../services/fetch-user-readable-knowledge-data';
-import type { KnowledgeArticlesCatalog, CategoryCount } from '../types/knowledge';
+import type { CategoryCount } from '../services/fetch-knowledge-articles-by-knowledge-base-ids';
+import type { KnowledgeArticlesCatalog } from '../types/knowledge';
 
 function useAccessibleKnowledgeArticlesCatalogQuery() {
     const queryKey = ['accessible-knowledge-articles-catalog'];
