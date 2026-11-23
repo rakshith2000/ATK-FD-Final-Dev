@@ -51,6 +51,36 @@ from auth_handler import get_user_info_supplementary
 from typing import Literal
 from pydantic import BaseModel, Field
 
+def _parse_chatbot_response(outcome):
+    response = getattr(outcome, "response", outcome)
+    if response is None:
+        return ""
+    if not isinstance(response, str):
+        response = str(response)
+
+    response = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.strip(), flags=re.IGNORECASE).strip()
+    if not response:
+        return ""
+
+    try:
+        parsed_response = json.loads(response)
+    except json.JSONDecodeError:
+        parsed_response = None
+
+    if isinstance(parsed_response, dict):
+        return parsed_response
+
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", response):
+        try:
+            parsed_response, _ = decoder.raw_decode(response[match.start() :])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed_response, dict) and ("response" in parsed_response or "work_notes_summary" in parsed_response):
+            return parsed_response
+
+    return response
+
 def rag_agent(sys_prompts_config):
     configs = scf.get_system_config()
     iaira_sys_prompt = sys_prompts_config.get("knowledge_retrieval_agent", None)
@@ -230,19 +260,9 @@ async def run_demo_chatbot(query, token):
         user_id = user_id,
     )
 
-    outcome, _, _ = scan_output(output_scanners_list, sanitized_prompt, str(outcome))
-
-    try:
-        outcome = "{" + "}".join("{".join(outcome.strip().split("{")[1:]).strip().split("}")[:-1]) + "}"
-        return json.loads(outcome)
-        
-    except (json.JSONDecodeError, ValueError) as e:
-        log_event(application_logger, logging.WARNING,
-                f"incident_assist run_demo_chatbot() failed to parse/validate output: {e}; raw={outcome[:200]!r}",
-                module_name="incident_assist", component_type="app_agent_execution",
-                component_name="incident_assist_agent - run_demo_chatbot")
-
-    return outcome
+    response_text = getattr(outcome, "response", outcome)
+    outcome, _, _ = scan_output(output_scanners_list, sanitized_prompt, str(response_text))
+    return _parse_chatbot_response(outcome)
 
 async def run_rag(query, token):
     user_id = get_user_info_supplementary(token)["user_id"]
@@ -395,19 +415,9 @@ async def run_chatbot(query, token):
             user_id = user_id,
         )
 
-        outcome, _, _ = scan_output(output_scanners_list, sanitized_prompt, str(outcome))
-
-        try:
-            outcome = "{" + "}".join("{".join(outcome.strip().split("{")[1:]).strip().split("}")[:-1]) + "}"
-            return json.loads(outcome)
-
-        except (json.JSONDecodeError, ValueError) as e:
-            log_event(application_logger, logging.WARNING,
-                    f"incident_assist run_chatbot() failed to parse/validate output: {e}; raw={outcome[:200]!r}",
-                    module_name="incident_assist", component_type="app_agent_execution",
-                    component_name="incident_assist_agent - run_chatbot")
-
-        return outcome
+        response_text = getattr(outcome, "response", outcome)
+        outcome, _, _ = scan_output(output_scanners_list, sanitized_prompt, str(response_text))
+        return _parse_chatbot_response(outcome)
     
 async def run_resolution_summary_agent(conversation, token):
     user_id = get_user_info_supplementary(token)["user_id"]

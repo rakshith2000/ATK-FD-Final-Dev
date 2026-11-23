@@ -96,9 +96,9 @@ def incident_cluster_agent(sys_prompts_config):
                   module_name="problem_assist",
                   component_type="proactive_problem_analysis",
                   component_name="incident_cluster_agent")
-        return log_str
+        raise RuntimeError(log_str)
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1.0
     client._litellm_params["response_format"] = ProblemTicketList
 
     return client.create_agent(
@@ -128,7 +128,7 @@ def problem_filter_agent(sys_prompts_config):
                   component_name="problem_filter_agent")
         return log_str
 
-    client._default_options["temperature"] = 0.0
+    client._default_options["temperature"] = 1.0
     client._litellm_params["response_format"] = FilterDecision
 
     return client.create_agent(
@@ -140,9 +140,7 @@ def problem_filter_agent(sys_prompts_config):
 
 # ── Self-contained run helpers ────────────────────────────────────────────────
 
-async def run_cluster_analysis(incidents_json, assignment_group, criteria_value, sys_prompts_config, configs, input_scanners_list, output_scanners_list):
-    IncidentClusterAgent, cluster_client = incident_cluster_agent(sys_prompts_config=sys_prompts_config)
-
+async def run_cluster_analysis(incidents_json, assignment_group, criteria_value, cluster_agent, cluster_client, sys_prompts_config, configs, input_scanners_list, output_scanners_list):
     query = (
         f"Analyze the following incidents for assignment group '{assignment_group}' "
         f"under the criteria '{criteria_value}' and generate consolidated problem tickets.\n\n"
@@ -153,7 +151,7 @@ async def run_cluster_analysis(incidents_json, assignment_group, criteria_value,
 
     cluster_client.usage = {}
 
-    outcome = await IncidentClusterAgent.run(sanitized_prompt)
+    outcome = await cluster_agent.run(sanitized_prompt)
 
     track_llm_tokens(
         usage=cluster_client.usage,
@@ -294,6 +292,11 @@ async def run(days_back=30, criterias=None):
         if item in output_llm_guard_dict:
             output_scanners_list.append(output_llm_guard_dict[item])
 
+    try:
+        cluster_agent, cluster_client = incident_cluster_agent(sys_prompts_config=sys_prompts_config)
+    except RuntimeError:
+        return
+
     insert_data = []
 
     for assignment_grp, grp_incidents in top_groups:
@@ -320,6 +323,8 @@ async def run(days_back=30, criterias=None):
                     incidents_json=incidents_json,
                     assignment_group=assignment_grp,
                     criteria_value=criteria_value,
+                    cluster_agent=cluster_agent,
+                    cluster_client=cluster_client,
                     sys_prompts_config=sys_prompts_config,
                     configs=configs,
                     input_scanners_list=input_scanners_list,

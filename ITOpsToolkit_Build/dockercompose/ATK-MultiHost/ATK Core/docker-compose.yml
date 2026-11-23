@@ -331,6 +331,12 @@ services:
       #    moved on from this source tree — reconcile before mounting.
       - ./hotfix/servicenow_proxy.py:/app/modules/incident_assist/utils/servicenow_proxy.py
       - ./hotfix/incident_assist_routers.py:/app/modules/incident_assist/routers/incident_assist_routers.py
+      - ./hotfix/core_crud.py:/app/core_crud.py:ro
+      - ./hotfix/change_assist_agent.py:/app/modules/change_assist/utils/change_assist_agent.py:ro
+      - ./hotfix/change_assist_tools.py:/app/modules/change_assist/utils/change_assist_tools.py:ro
+      - ./hotfix/incident_assist_agent.py:/app/modules/incident_assist/utils/incident_assist_agent.py:ro
+      - ./hotfix/score_evaluator.py:/app/modules/knowledge_assist/utils/score_evaluator.py:ro
+      - ./hotfix/proactive_problem_analysis.py:/app/modules/problem_assist/utils/proactive_problem_analysis.py:ro
 
       # ── Keycloak backend client credentials ───────────────────────────────────
       # CLIENT_ID and CLIENT_SECRET for backend to call Keycloak API

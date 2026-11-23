@@ -17,10 +17,32 @@ from knowledge_assist_utils import KnowledgeAssistUtils
 
 async def evaluate_articles():
     BATCH_SIZE = 10
+    skipped_kb_numbers = {
+        number.strip()
+        for number in os.getenv("SCORE_EVALUATOR_SKIP_KB_NUMBERS", "").split(",")
+        if number.strip()
+    }
 
     db_local_Session = db_session.get_db()
-    (status, data) = core_crud.list_knowledge_articles_by_score(db_local_Session, "", "eq", BATCH_SIZE, "knowledge_assist")
+    (status, data) = core_crud.list_knowledge_articles_by_score(
+        db_local_Session,
+        "",
+        "eq",
+        BATCH_SIZE,
+        "knowledge_assist",
+        excluded_numbers=sorted(skipped_kb_numbers),
+    )
     db_local_Session.close()
+
+    if skipped_kb_numbers:
+        log_event(
+            application_logger,
+            logging.INFO,
+            f"Skipping knowledge articles: {', '.join(sorted(skipped_kb_numbers))}",
+            module_name="knowledge_assist",
+            component_type="scheduled job",
+            component_name="score_evaluator - evaluate_articles"
+        )
     
     if not status:
         return (status, data)

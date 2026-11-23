@@ -27,7 +27,7 @@ function ItopsIndexPage() {
         { landingCard: getLandingMetaById('/itops/service-request', canLoadLicensedModuleMeta), navigateTo: '/itops-ai/service-request' },
         { landingCard: getLandingMetaById('/itops/problem-ai', canLoadLicensedModuleMeta), navigateTo: '/itops-ai/problem-ai' },
         { landingCard: getLandingMetaById('/itops/change-ai', canLoadLicensedModuleMeta), navigateTo: '/itops-ai/change-ai' },
-        { landingCard: getLandingMetaById('/itops/major-incident-management', canLoadLicensedModuleMeta), navigateTo: '/itops-ai/major-incident-management' },
+        //{ landingCard: getLandingMetaById('/itops/major-incident-management', canLoadLicensedModuleMeta), navigateTo: '/itops-ai/major-incident-management' },
     ].filter(({ landingCard }) => !!landingCard);
 
     return (

@@ -24,8 +24,8 @@ function AppIndexPage() {
     const { scrollContainerRef, canScrollRight, canScrollLeft, scrollLeft, scrollRight } = useScrollOverflow({ direction: 'horizontal', scrollDistance: 300 });
 
     const navigationCards: Array<{ landingCard: Omit<LandingCardProps, 'onClick'> | undefined; navigateTo: string }> = [
-        { landingCard: getLandingMetaById('/itops', canLoadLicensedModuleMeta), navigateTo: '/itops-ai' },
         { landingCard: getLandingMetaById('/transition-ai', canLoadLicensedModuleMeta), navigateTo: '/transition-ai' },
+        { landingCard: getLandingMetaById('/itops', canLoadLicensedModuleMeta), navigateTo: '/itops-ai' },
         { landingCard: getLandingMetaById('/compliance-ai', canLoadLicensedModuleMeta), navigateTo: '/compliance-ai' },
         { landingCard: getLandingMetaById('/dashboards', canLoadLicensedModuleMeta), navigateTo: '/dashboards' },
         { landingCard: getLandingMetaById('/cloud-ai', canLoadLicensedModuleMeta), navigateTo: appConfig.externalLinks.cloudAi },

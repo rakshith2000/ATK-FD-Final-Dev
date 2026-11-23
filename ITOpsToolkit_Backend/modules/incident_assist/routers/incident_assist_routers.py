@@ -1417,7 +1417,8 @@ async def interactive_chat_bot(payload: ChatBotRequestModel,
         (answer, work_notes_and_comments, conversation_history) = await ia_obj.chatbot(payload.query, payload.conversation_history, token)
 
         if not answer:
-            response["error"] = {"data": {}, "message": "User query response generation failed"}
+            failure_reason = "Chatbot returned an empty response"
+            response["error"] = {"data": {}, "message": f"User query response generation failed - {failure_reason}"}
             response["code"] = 500
 
             en_ts = datetime.datetime.now(datetime.UTC)
@@ -1425,7 +1426,7 @@ async def interactive_chat_bot(payload: ChatBotRequestModel,
             # Audit logging
             log_event(audit_logger,
                       logging.ERROR,
-                      f"Accessed - Execution Error - {answer}",
+                      f"Accessed - Execution Error - {failure_reason}",
                       user_id = user_info.user_id,
                       api = request.url.path,
                       api_method = request.method,
@@ -1483,7 +1484,8 @@ async def interactive_chat_bot_demo(payload: ChatBotRequestModel,
         (answer, work_notes_and_comments, conversation_history) = await ia_obj.demo_chatbot(payload.query, payload.conversation_history, token)
 
         if not answer:
-            response["error"] = {"data": {}, "message": "User query response generation failed"}
+            failure_reason = "Demo chatbot returned an empty response"
+            response["error"] = {"data": {}, "message": f"User query response generation failed - {failure_reason}"}
             response["code"] = 500
 
             en_ts = datetime.datetime.now(datetime.UTC)
@@ -1491,7 +1493,7 @@ async def interactive_chat_bot_demo(payload: ChatBotRequestModel,
             # Audit logging
             log_event(audit_logger,
                       logging.ERROR,
-                      f"Accessed - Execution Error - {answer}",
+                      f"Accessed - Execution Error - {failure_reason}",
                       user_id = user_info.user_id,
                       api = request.url.path,
                       api_method = request.method,

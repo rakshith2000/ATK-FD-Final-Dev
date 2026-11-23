@@ -370,23 +370,29 @@ async def run(query, token):
         timeout=Timeout(60.0, read=300.0),
     ) as http_client:
 
+        """
         mcp_tool = MCPStreamableHTTPTool(
             name = "servicenowmcp",
             url = os.getenv("AGENT_GATEWAY_URL", "http://itops-platform-agent-gateway.integration.svc.cluster.local:3000/agent-gateway"),
             http_client = http_client,
         )
+        """
 
         PromptRefactorerAgent, pra_client = prompt_refactorer_agent(sys_prompts_config=sys_prompts_config)
+        """
         ArchitectureTopologyInsightAgent, atia_client = await architecture_topology_insight_agent(
             sys_prompts_config=sys_prompts_config,
             mcp_tool=mcp_tool,
         )
+        """
+
         ArchitectureImageAnalyzerAgent, aiaa_client = architecture_image_analyzer_agent(sys_prompts_config=sys_prompts_config)
         ChangeCreationAgent, cca_client = change_creation_agent(sys_prompts_config=sys_prompts_config)
 
         img_resp2msg = ResponseToAssistantMessage(id="ImgResp2Msg", label="Architecture Image Analysis")
-        topo_resp2msg = ResponseToAssistantMessage(id="TopoResp2Msg", label="Architecture Topology Insights (from CMDB via MCP)")
+        #topo_resp2msg = ResponseToAssistantMessage(id="TopoResp2Msg", label="Architecture Topology Insights (from CMDB via MCP)")
 
+        """
         workflow = (
             WorkflowBuilder(start_executor=PromptRefactorerAgent)
             .add_fan_out_edges(
@@ -396,6 +402,14 @@ async def run(query, token):
             .add_edge(ArchitectureImageAnalyzerAgent, img_resp2msg)
             .add_edge(ArchitectureTopologyInsightAgent, topo_resp2msg)
             .add_fan_in_edges([img_resp2msg, topo_resp2msg], ChangeCreationAgent)
+            .build()
+        )
+        """
+        workflow = (
+            WorkflowBuilder(start_executor=PromptRefactorerAgent)
+            .add_edge(PromptRefactorerAgent, ArchitectureImageAnalyzerAgent)
+            .add_edge(ArchitectureImageAnalyzerAgent, img_resp2msg)
+            .add_edge(img_resp2msg, ChangeCreationAgent)
             .build()
         )
 
@@ -430,19 +444,22 @@ async def run(query, token):
         sanitized_prompt, _, _ = scan_prompt(input_scanners_list, query)
 
         pra_client.usage = {}
-        atia_client.usage = {}
+        #atia_client.usage = {}
         aiaa_client.usage = {}
         cca_client.usage = {}
 
+        """
         async with mcp_tool:
             workflow_result = await workflow.run(sanitized_prompt)
+        """
+        workflow_result = await workflow.run(sanitized_prompt)
 
         track_llm_tokens(usage=pra_client.usage,  agent="PromptRefactorerAgent",
                          llm_tag=sys_prompts_config.get("prompt_refactorer_agent").get("llm_tag", configs["llm_tag"]),
                          module="change_assist", user_id=user_id)
-        track_llm_tokens(usage=atia_client.usage, agent="ArchitectureTopologyInsightAgent",
-                         llm_tag=sys_prompts_config.get("architecture_topology_insight_agent").get("llm_tag", configs["llm_tag"]),
-                         module="change_assist", user_id=user_id)
+        #track_llm_tokens(usage=atia_client.usage, agent="ArchitectureTopologyInsightAgent",
+        #                 llm_tag=sys_prompts_config.get("architecture_topology_insight_agent").get("llm_tag", configs["llm_tag"]),
+        #                 module="change_assist", user_id=user_id)
         track_llm_tokens(usage=aiaa_client.usage, agent="ArchitectureImageAnalyzerAgent",
                          llm_tag=sys_prompts_config.get("architecture_image_analyzer_agent").get("llm_tag", configs["llm_tag"]),
                          module="change_assist", user_id=user_id)

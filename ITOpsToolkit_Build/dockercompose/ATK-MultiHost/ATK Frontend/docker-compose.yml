@@ -83,6 +83,11 @@ services:
       - ./src-override/apply-auth-token.interceptor.ts:/app/src/api/axios-clients/service-now-api/apply-auth-token.interceptor.ts:ro
       - ./src-override/refresh-auth-token.interceptor.ts:/app/src/api/axios-clients/service-now-api/refresh-auth-token.interceptor.ts:ro
 
+      # ── Application hotfixes: applied before the frontend bundle is built ──────
+      - "./hotfix/routes/(app)/_app/index.tsx:/app/src/routes/(app)/_app/index.tsx:ro"
+      - "./hotfix/routes/(app)/_app/(itops-ai)/itops-ai/index.tsx:/app/src/routes/(app)/_app/(itops-ai)/itops-ai/index.tsx:ro"
+      - ./hotfix/shared/modules/servicenow/hooks/useAccessibleKnowledgeArticlesCatalogQuery.ts:/app/src/shared/modules/servicenow/hooks/useAccessibleKnowledgeArticlesCatalogQuery.ts:ro
+
       - frontend_dist:/shared
     #depends_on:
     #  - backend

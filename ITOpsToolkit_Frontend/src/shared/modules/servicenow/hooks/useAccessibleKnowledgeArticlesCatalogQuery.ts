@@ -10,10 +10,12 @@ function useAccessibleKnowledgeArticlesCatalogQuery() {
         queryFn: fetchUserReadableKnowledgeCategoryCounts as () => Promise<Array<CategoryCount>>,
         select: (categories: Array<CategoryCount>) => {
             const totalCount = categories.reduce((sum, cat) => sum + cat.count, 0);
+            const sortedCategories = [...categories].sort((a, b) => b.count - a.count || a.categoryName.localeCompare(b.categoryName));
+
             return {
                 articlesCount: totalCount,
                 articles: [],
-                categories: categories.map((cat) => ({
+                categories: sortedCategories.map((cat) => ({
                     category: cat.categoryName,
                     categoryId: cat.categorySysId,
                     articlesCount: cat.count,

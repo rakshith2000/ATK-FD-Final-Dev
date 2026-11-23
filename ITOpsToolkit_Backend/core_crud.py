@@ -1005,9 +1005,10 @@ def list_knowledge_articles(db_session, numbers, module_name):
         return (False, f"Knowledge articles retrieval failed - {str(e)}")
     
 # List knowledge articles filtered score (score can be none)
-def list_knowledge_articles_by_score(db_session, rating, param, limit, module_name):
+def list_knowledge_articles_by_score(db_session, rating, param, limit, module_name, excluded_numbers=None):
     try:
         conditions = []
+        number_column = db_models.KnowledgeArticleInventory.kb_metadata["number"].astext
         rating_column = cast(
             func.nullif(
                 db_models.KnowledgeArticleInventory.kb_metadata["rating"].astext,
@@ -1035,9 +1036,12 @@ def list_knowledge_articles_by_score(db_session, rating, param, limit, module_na
 
             conditions.append(comparisons[param])
 
+        if excluded_numbers:
+            conditions.append(number_column.notin_(excluded_numbers))
+
         results = (
             db_session.query(
-                db_models.KnowledgeArticleInventory.kb_metadata["number"].astext.label("number"),
+                number_column.label("number"),
                 db_models.KnowledgeArticleInventory.content,
                 db_models.KnowledgeArticleInventory.kb_metadata["rating"].label("rating")
             )
