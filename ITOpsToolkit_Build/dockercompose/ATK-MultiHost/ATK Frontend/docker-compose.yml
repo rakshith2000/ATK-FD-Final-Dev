@@ -87,6 +87,14 @@ services:
       - "./hotfix/routes/(app)/_app/index.tsx:/app/src/routes/(app)/_app/index.tsx:ro"
       - "./hotfix/routes/(app)/_app/(itops-ai)/itops-ai/index.tsx:/app/src/routes/(app)/_app/(itops-ai)/itops-ai/index.tsx:ro"
       - ./hotfix/shared/modules/servicenow/hooks/useAccessibleKnowledgeArticlesCatalogQuery.ts:/app/src/shared/modules/servicenow/hooks/useAccessibleKnowledgeArticlesCatalogQuery.ts:ro
+      - ./hotfix/shared/modules/servicenow/services/fetch-knowledge-article-content.ts:/app/src/shared/modules/servicenow/services/fetch-knowledge-article-content.ts:ro
+      - ./hotfix/shared/modules/servicenow/services/fetch-knowledge-articles-by-knowledge-base-ids.ts:/app/src/shared/modules/servicenow/services/fetch-knowledge-articles-by-knowledge-base-ids.ts:ro
+      - ./hotfix/shared/modules/servicenow/services/fetch-user-readable-knowledge-data.ts:/app/src/shared/modules/servicenow/services/fetch-user-readable-knowledge-data.ts:ro
+      - ./hotfix/modules/knowledge-ai/pages/RefineArticlesPage.tsx:/app/src/modules/knowledge-ai/pages/RefineArticlesPage.tsx:ro
+      - ./hotfix/modules/knowledge-ai/components/ui/KBArticleCard/KBArticleCard.tsx:/app/src/modules/knowledge-ai/components/ui/KBArticleCard/KBArticleCard.tsx:ro
+      - ./hotfix/modules/knowledge-browser/services/fetch-knowledge-articles-by-category.ts:/app/src/modules/knowledge-browser/services/fetch-knowledge-articles-by-category.ts:ro
+      - ./hotfix/modules/knowledge-browser/components/ui/KnowledgeArticleCard/KnowledgeArticleCard.tsx:/app/src/modules/knowledge-browser/components/ui/KnowledgeArticleCard/KnowledgeArticleCard.tsx:ro
+      - ./hotfix/modules/knowledge-browser/components/ui/KnowledgeArticleDetailModal/KnowledgeArticleDetailModal.tsx:/app/src/modules/knowledge-browser/components/ui/KnowledgeArticleDetailModal/KnowledgeArticleDetailModal.tsx:ro
 
       - frontend_dist:/shared
     #depends_on:
