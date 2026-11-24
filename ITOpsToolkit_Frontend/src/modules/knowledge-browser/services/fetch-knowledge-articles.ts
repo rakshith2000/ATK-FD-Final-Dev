@@ -3,8 +3,8 @@ import { withApiResponseHandler } from '@/api/utils/with-api-response-handler-ho
 import { appConfig } from '@/config/app-config';
 import { getAuthProviderInstance } from '@/shared/modules/auth/utils/get-auth-provider-instance';
 import logger from '@/shared/utils/logger';
-import type { CategoryCount, ArticleCountItem } from '@/shared/modules/servicenow/types/knowledge';
 import fetchSnowUserCriteriaIdsBySysId from '@/shared/modules/servicenow/services/fetch-snow-user-criteria-ids-by-user-sys-id';
+import { fetchKnowledgeArticlesCategoryCountByKnowledgeBaseIds } from '@/shared/modules/servicenow/services/fetch-knowledge-articles-by-knowledge-base-ids';
 import { isSnowKbReadAccessArray } from '../type-guards/knowledge-browser-guard';
 
 /**
@@ -37,40 +37,7 @@ const fetchReadableKnowledgeBaseIds = async (userCriteriaIds: Array<string>): Pr
     return [...new Set(knowledgeBaseIds)];
 };
 
-const fetchArticlesCountByCategory = async (knowledgeBaseIds: Array<string>): Promise<Array<CategoryCount>> => {
-    const response = await serviceNowApiClient.get(appConfig.serviceNow.api.knowledgeArticlescount, {
-        params: {
-            sysparm_count: true,
-            sysparm_group_by: 'kb_category',
-            sysparm_query: `kb_knowledge_baseIN${knowledgeBaseIds.join(',')}^workflow_state=published`,
-            sysparm_display_value: 'all',
-        },
-    });
-
-    const results = response?.data?.result;
-    if (Array.isArray(results)) {
-        return results.map((item: ArticleCountItem) => {
-            const firstGroupByField = item.groupby_fields?.[0];
-            const categoryValue = (firstGroupByField?.value || '').toString().trim();
-            const displayValue = (firstGroupByField?.display_value || categoryValue || '').toString().trim();
-            const countValue = item.stats?.count ?? 0;
-            const count = typeof countValue === 'string' ? parseInt(countValue, 10) : countValue;
-            return {
-                categorySysId: categoryValue || null,
-                categoryId: categoryValue || null,
-                categoryName: displayValue || 'Uncategorised',
-                count: Number.isNaN(count) ? 0 : count,
-            };
-        });
-    }
-
-    logger.debug('Knowledge articles count response failed', { responseData: response?.data });
-    throw new Error('Unable to retrieve the knowledge articles count from Service Now !', {
-        cause: {
-            reason: 'response?.data?.result is invalid !',
-        },
-    });
-};
+type KnowledgeCategoryCounts = Awaited<ReturnType<typeof fetchKnowledgeArticlesCategoryCountByKnowledgeBaseIds>>;
 
 /**
  * Builds the knowledge-browser catalog directly from ServiceNow instead of the backend
@@ -82,8 +49,8 @@ const fetchArticlesCountByCategory = async (knowledgeBaseIds: Array<string>): Pr
  * The final article list matches the shape the UI already consumes, so downstream
  * grouping / rendering keeps working unchanged.
  */
-const fetchKnowledgeArticleCountsByCategory = async (): Promise<Array<CategoryCount>> => {
-    return withApiResponseHandler<Array<CategoryCount>>(async () => {
+const fetchKnowledgeArticleCountsByCategory = async (): Promise<KnowledgeCategoryCounts> => {
+    return withApiResponseHandler<KnowledgeCategoryCounts>(async () => {
         const { sys_id: userSysId } = await getAuthProviderInstance().getUserSnowDetails();
         if (!userSysId) return [];
 
@@ -93,7 +60,7 @@ const fetchKnowledgeArticleCountsByCategory = async (): Promise<Array<CategoryCo
         const knowledgeBaseIds = await fetchReadableKnowledgeBaseIds(userCriteriaIds);
         if (knowledgeBaseIds.length === 0) return [];
 
-        return await fetchArticlesCountByCategory(knowledgeBaseIds);
+        return fetchKnowledgeArticlesCategoryCountByKnowledgeBaseIds(knowledgeBaseIds);
     });
 };
 
