@@ -4,34 +4,8 @@ import { appConfig } from '@/config/app-config';
 import { getAuthProviderInstance } from '@/shared/modules/auth/utils/get-auth-provider-instance';
 import logger from '@/shared/utils/logger';
 import type { CategoryCount, ArticleCountItem } from '@/shared/modules/servicenow/types/knowledge';
-import { isSnowUserCriteriaArray, isSnowKbReadAccessArray } from '../type-guards/knowledge-browser-guard';
-
-/**
- * Resolves the `user_criteria` records that reference the currently signed-in user.
- *
- * ServiceNow stores `user` on `user_criteria` as a glide-list (a comma-separated
- * list of user sys_ids), so we match with `LIKE` against the user's sys_id rather
- * than an exact `=` comparison. Returns the criteria sys_ids.
- */
-const fetchUserCriteriaIds = async (userSysId: string): Promise<Array<string>> => {
-    const response = await serviceNowApiClient.get(appConfig.serviceNow.api.knowledgeUserCriteria, {
-        params: {
-            sysparm_query: `userLIKE${userSysId}`,
-            sysparm_fields: 'sys_id,name',
-            sysparm_display_value: true,
-        },
-    });
-
-    const results = response?.data?.result;
-    if (!isSnowUserCriteriaArray(results)) {
-        logger.debug('user_criteria response failed schema validation', { responseData: response?.data });
-        throw new Error('Unable to retrieve user criteria from Service Now, failed to validate the response JSON Schema !', {
-            cause: { reason: 'response?.data?.result schema is invalid !' },
-        });
-    }
-
-    return results.map((criteria) => criteria.sys_id).filter((sysId) => sysId.length > 0);
-};
+import fetchSnowUserCriteriaIdsBySysId from '@/shared/modules/servicenow/services/fetch-snow-user-criteria-ids-by-user-sys-id';
+import { isSnowKbReadAccessArray } from '../type-guards/knowledge-browser-guard';
 
 /**
  * Given the user's `user_criteria` sys_ids, resolves the distinct knowledge-base
@@ -113,7 +87,7 @@ const fetchKnowledgeArticleCountsByCategory = async (): Promise<Array<CategoryCo
         const { sys_id: userSysId } = await getAuthProviderInstance().getUserSnowDetails();
         if (!userSysId) return [];
 
-        const userCriteriaIds = await fetchUserCriteriaIds(userSysId);
+        const userCriteriaIds = await fetchSnowUserCriteriaIdsBySysId(userSysId);
         if (userCriteriaIds.length === 0) return [];
 
         const knowledgeBaseIds = await fetchReadableKnowledgeBaseIds(userCriteriaIds);

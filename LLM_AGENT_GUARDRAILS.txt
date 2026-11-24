@@ -1,0 +1,311 @@
+ATK LLM AGENT GUARDRAILS
+Repository-wide inventory
+Reviewed: 2026-11-24
+
+PURPOSE AND SCOPE
+
+This report inventories guardrails visible in the ATK repository's LLM-backed
+agents, their frontend flows, gateway controls, and deployment configuration.
+It distinguishes prompt instructions and configurable controls from safeguards
+whose runtime enforcement is evident in code. The principal code areas reviewed
+are ITOpsToolkit_Backend, ITOpsToolkit_Frontend, ITOpsToolkit_Agent_Gateway,
+ITOpsToolkit_Build, and the LiteLLM/Bedrock deployment configuration.
+
+KEY FINDINGS
+
+1. Most backend modules declare an LLM guard called "Bias", but their scanner
+   registries use lowercase names and match names case-sensitively. As a result,
+   those module declarations select no scanners. Problem Assist uses lowercase
+   names and is the clear exception.
+2. Even where scanners run, the inspected flows generally continue with the
+   scanner's transformed text and do not reject content based on its validity
+   or risk result. Malicious-URL scanning is commented out in the reviewed
+   backend implementations.
+3. Most agent safeguards are prompt instructions (grounding, output format,
+   task scope), rather than hard validation or authorization boundaries.
+4. MCP tool selection limits which tools an agent is offered, but the
+   ServiceNow MCP server's per-tool RBAC checks are commented out. A separate
+   RBAC file exists but is not applied in that server path.
+5. Bedrock Guardrail resources are configured in Terraform, but the reviewed
+   code does not establish that agent calls attach/use them. LiteLLM deployment
+   configurations reviewed do not declare content guardrails.
+6. Gateway authentication, authorization, and external guardrail processors
+   are configurable capabilities; the repository does not establish that
+   policies are active for the product agents. The gateway engine is a
+   container image, not inspected implementation source.
+
+BACKEND AGENTS BY MODULE
+
+Shared runtime pattern
+
+- Module prompt libraries generally configure model "azure_gpt4o" and the
+  "demo_eks_instance" ITSM tag. These are routing/context settings, not safety
+  enforcement. Example:
+  ITOpsToolkit_Backend/modules/change_assist/config/system_prompts.yaml:1-7
+- Scanner implementations include input toxicity, gibberish, banned-code,
+  prompt-injection, and PII anonymization checks; output scanning includes
+  toxicity, gibberish, banned-code, deanonymization, and bias. The cited
+  Knowledge Assist registry illustrates the available scanner maps:
+  ITOpsToolkit_Backend/modules/knowledge_assist/utils/knowledge_assist_agent.py:191-218
+- Scanner thresholds shown in the implementation are 0.5 for toxicity and
+  prompt-injection checks. Malicious-URL checks are commented out; Secrets is
+  imported but not included in the scanner maps.
+- Change, Incident, Knowledge, Meeting, MIM, and Train configuration files
+  declare "Bias", whereas scanner registry keys are lowercase and selection
+  uses a case-sensitive membership check. Consequently, these declarations
+  yield empty input and output scanner lists. Example implementation:
+  ITOpsToolkit_Backend/modules/change_assist/utils/change_assist_agent.py:418-444
+- Scanner calls do not consistently gate execution on scanner validity/risk
+  flags. The shared missing-prompt fallback also has an unsafe None path:
+  ITOpsToolkit_Backend/modules/change_assist/utils/system_config_ca.py:68-91
+  (the pattern is repeated in module system-config helpers).
+
+Change Assist
+
+- Agent types include prompt refactoring, architecture-image analysis,
+  topology insights, and change creation.
+- Prompts constrain output shape and intent: refined prompt only, raw topology
+  tool output, and JSON change plans with impact analysis grounded in the
+  available context.
+- MCP and image-analysis tools are exposed to selected agents, but the
+  module's configured "Bias" scanner does not match the lowercase scanner map.
+- ChangeRequest Pydantic models exist, but the main generated response is not
+  validated against them in the noted flow.
+- References:
+  ITOpsToolkit_Backend/modules/change_assist/config/system_prompts.yaml:9-121
+  ITOpsToolkit_Backend/modules/change_assist/utils/change_assist_agent.py:269-322, 418-444, 489-493
+
+Incident Assist
+
+- Agents cover knowledge retrieval/RAG, chatbot, demo chatbot, and resolution
+  summaries.
+- Prompts request grounded answers, knowledge-base citations, context-limited
+  responses, and JSON where specified.
+- The RAG agent is offered article/CMDB/service-map tools; the chatbot is
+  offered its supplied MCP tool. Tool selection is a boundary on the available
+  tool list, not server-side per-tool authorization.
+- Configured scanner names are subject to the case mismatch described above.
+- References:
+  ITOpsToolkit_Backend/modules/incident_assist/config/system_prompts.yaml:8-60, 89-243
+  ITOpsToolkit_Backend/modules/incident_assist/utils/incident_assist_agent.py:106-140
+
+Knowledge Assist
+
+- Agent types include article merge, refinement, generation, scoring,
+  management, and image analysis.
+- Prompts request source-grounded content, no invented facts, and specified
+  JSON/HTML formats; image-related instructions cover URL handling.
+- Similar-article search is limited to three results. The KB sync image-analysis
+  path uses a prompt, but the reviewed path does not show the scanner pipeline.
+- Main-agent scanner selection is disabled by the "Bias"/lowercase mismatch.
+- References:
+  ITOpsToolkit_Backend/modules/knowledge_assist/config/system_prompts.yaml:9-336+
+  ITOpsToolkit_Backend/modules/knowledge_assist/utils/knowledge_assist_utils.py:377
+  ITOpsToolkit_Backend/modules/knowledge_assist/utils/kb_sync.py:57-61, 147
+
+Meeting Assist
+
+- Agent types include transcript summary, article generation, chat, article
+  conversion, and management.
+- Prompts request transcript-grounded facts and strict JSON for summary/article
+  generation; chat is constrained to transcript context.
+- Scanner calls exist, but the configured "Bias" name does not select the
+  lowercase registry entry.
+- References:
+  ITOpsToolkit_Backend/modules/meeting_assist/config/system_prompts.yaml:9-264+
+  ITOpsToolkit_Backend/modules/meeting_assist/utils/meeting_assist_agents.py:185-221
+
+MIM Assist
+
+- Agent types include summary, tech-tower identification, initial diagnosis,
+  and chatbot.
+- Instructions constrain tower selection to supplied labels, discourage
+  invented incident facts, and require MCP-backed answers to use tool results.
+  Chatbot responses have a structured format; the initial-diagnosis response
+  format is commented out.
+- Configured scanner names do not match the lowercase registry.
+- References:
+  ITOpsToolkit_Backend/modules/mim_assist/config/system_prompts.yaml:10-117+
+  ITOpsToolkit_Backend/modules/mim_assist/utils/mim_assist_agent.py:121-177
+
+Problem Assist
+
+- Proactive agents handle incident clustering and rejected-ticket deduplication;
+  reactive RCA includes AskLLM, ProblemAnalysis, PreventiveTasks,
+  IncidentSummary, and AttachmentSummary agent roles.
+- Prompts prohibit hallucination, require at least two incidents per cluster,
+  and define JSON response shapes.
+- Its configured guard names are lowercase and match scanner keys. Proactive
+  analysis therefore wires toxicity, gibberish, banned-code, prompt-injection,
+  anonymization, and bias scanning. Malicious-URL scanning remains commented
+  out. Scanner result flags are still not used as a consistent reject gate.
+- Pydantic validation is applied to selected cluster/filter results.
+- Approval-related fields exist, but the path that creates a problem ticket
+  does not check approval status before calling the create operation.
+- Reactive retrieval uses a configurable k (default 4) and similarity
+  threshold 0.1.
+- References:
+  ITOpsToolkit_Backend/modules/problem_assist/config/system_prompts.yaml:5-12, 14-90
+  ITOpsToolkit_Backend/modules/problem_assist/utils/proactive_problem_analysis.py:102, 132, 164-195, 269-289
+  ITOpsToolkit_Backend/modules/problem_assist/utils/problem_rca.py:243-388
+  ITOpsToolkit_Backend/modules/problem_assist/utils/problem_assist_utils.py:41-48, 63-83
+  ITOpsToolkit_Backend/modules/problem_assist/utils/reactive_problem/knowledge_assistant.py:86-100, 176-186
+
+Train Assist
+
+- Agent types include general/beginner/specialist/expert quiz generation,
+  scenario generation, quiz summary, and management.
+- Prompts constrain content to supplied material, expected question/choice
+  counts, JSON output, scenario question cadence, and answer disclosure.
+- Configured scanner names are subject to the case mismatch described above.
+- Reference:
+  ITOpsToolkit_Backend/modules/train_assist/config/system_prompts.yaml:9-298+
+
+Other backend modules and cross-cutting controls
+
+- No additional LLM agent behavior was identified in the Administration/Auth
+  modules during this inventory; their absence should not be read as a
+  guarantee that no indirect LLM integration exists.
+- ServiceNow MCP has token introspection, but loading RBAC and checking
+  per-tool permissions are commented out. The separate mcp_rbac.yaml lists
+  basic/privileged groups but is not applied by the reviewed server code.
+- The shared LiteLLM client permits max_tokens=None by default. Usage tracking
+  is present, but is not a request rate limit. No per-agent rate limit or
+  enforced human-approval gate for LLM calls was identified.
+- References:
+  ITOpsToolkit_Backend/mcp_servers/servicenow_mcp.py:43-82, 127-139
+  ITOpsToolkit_Backend/mcp_servers/config/mcp_rbac.yaml
+  ITOpsToolkit_Backend/litellm_chat_client.py:81-123
+
+FRONTEND AGENT FLOWS
+
+FASTE SOP agent
+
+- The frontend sends user text and current SOP content to the SOP service;
+  it does not define the agent's system prompt, enabled tools, or execution
+  policy. Quick-start prompts mention MCP but do not establish which tools
+  the backend enables.
+- Document upload has a 10 MB limit and accepts PDF/Word types/extensions.
+  These client checks do not prove server-side validation or instruction
+  sanitization of extracted content.
+- SOP submission checks required headings and nonempty content. The pre-check
+  flag is set immediately when clicked rather than waiting for a successful
+  agent pre-check response. Submission stores is_approved as False, so the
+  SOP is queued as unapproved rather than auto-approved.
+- References:
+  ITOpsToolkit_Frontend/src/modules/faste-ai/sop-dashboard/hooks/queries/useSopEngine.ts:10-12, 42-54, 70-71
+  ITOpsToolkit_Frontend/src/modules/faste-ai/sop-dashboard/utils/documentProcessor.ts:29-43
+  ITOpsToolkit_Frontend/src/modules/faste-ai/sop-dashboard/utils/sopFormatting.ts:55-83
+  ITOpsToolkit_Frontend/src/modules/faste-ai/sop-dashboard/components/smart/SopDocumentPreview.tsx:281-335, 414-426
+
+Change AI
+
+- Draft requests are mediated by the backend. Frontend Zod checks validate
+  response structure and types, not semantic safety, factual accuracy,
+  authorization, or prompt-injection resistance.
+- The human-edited form requires key fields and checks that the end date is
+  after the start date before posting to the ServiceNow change-request endpoint.
+  No separate semantic safety or approval check is evident in these frontend
+  paths.
+- References:
+  ITOpsToolkit_Frontend/src/modules/change-ai/services/draft-change.ts:7-18
+  ITOpsToolkit_Frontend/src/modules/change-ai/schemas/change-ai.schemas.ts:3-25
+  ITOpsToolkit_Frontend/src/modules/change-ai/components/smart/CreateChangeDetails/CreateChangeDetails.tsx:28-41, 61-80
+  ITOpsToolkit_Frontend/src/modules/change-ai/services/push-change-request-to-itsm.ts:8-18
+
+Prompt/guard administration UI
+
+- Admin forms expose Anonymization, Toxicity, Gibberish, Prompt Injection,
+  Malicious URLs, Bancode, and Bias options and require at least one selection.
+  Prompt edits require nonempty text and confirmation. This is a configuration
+  UI; it does not establish inference-time enforcement or backend validation
+  that values are restricted to the displayed options.
+- References:
+  ITOpsToolkit_Frontend/src/modules/admin-portal/modules/prompt-library/contants/llm-guards-options.ts:1-11
+  ITOpsToolkit_Frontend/src/modules/admin-portal/modules/prompt-library/components/smart/UpdateToolkitPackageConfigForm/UpdateToolkitPackageConfigForm.tsx:41-42, 84-87, 237-260
+  ITOpsToolkit_Frontend/src/modules/admin-portal/modules/prompt-library/components/smart/UpdatePromptConfigForm/UpdatePromptConfigForm.tsx:30-36, 61-68
+  ITOpsToolkit_Frontend/src/modules/admin-portal/modules/prompt-library/schemas/prompt-library.schemas.ts:3-13, 38-43
+
+AGENT GATEWAY
+
+- The configuration schema supports CEL allow/deny/require authorization rules
+  over MCP tools, prompts, and resources, plus local MCP authentication with
+  issuer, audience, and JWKS settings. The UI defaults auth mode to strict and
+  checks issuer/JWKS fields when saving. These are capabilities; no active
+  product-agent policy was established.
+- External MCP guardrail processors can match methods and request/response
+  phases. failClosed is the schema default, but the editor permits failOpen.
+  Unmatched methods bypass a processor. The gateway routes to an external
+  policy service; the schema does not implement content-safety logic itself.
+- Config validation uses AJV against JSON schema. The authorization editor
+  checks nonempty/duplicate CEL expressions but not their policy semantics.
+- MCP Playground can call discovered tools. Raw arguments must parse as a JSON
+  object, but are not validated there against the full tool input schema; the
+  bearer-token field is optional.
+- LLM Playground allows editable system prompts and user-supplied tools; tools
+  are sent with tool_choice=auto. No prompt moderation or tool allowlist was
+  evident in that path.
+- The engine Dockerfile references an external container image; repository
+  source does not establish engine-side enforcement.
+- References:
+  ITOpsToolkit_Agent_Gateway/agentgateway-ui/schema/config.json:2250-2364, 3934-3999
+  ITOpsToolkit_Agent_Gateway/agentgateway-ui/src/policies/McpAuthenticationPolicyEditor.tsx:40-42, 87-90
+  ITOpsToolkit_Agent_Gateway/agentgateway-ui/src/policies/McpGuardrailsPolicyEditor.tsx:26-51, 105-123, 340-380
+  ITOpsToolkit_Agent_Gateway/agentgateway-ui/src/configValidation.ts:8-36
+  ITOpsToolkit_Agent_Gateway/agentgateway-ui/src/policies/AuthorizationPolicyEditor.tsx:336-354
+  ITOpsToolkit_Agent_Gateway/agentgateway-ui/src/pages/McpPlayground.tsx:61-170, 365-368
+  ITOpsToolkit_Agent_Gateway/agentgateway-ui/src/pages/Playground.tsx:181, 325-326, 703-719
+  ITOpsToolkit_Agent_Gateway/agentgateway-engine/Dockerfile
+
+DEPLOYMENT AND INFRASTRUCTURE
+
+- AWS Bedrock Terraform defines a content guardrail with high input/output
+  filtering for hate, insults, sexual content, violence, and misconduct.
+  Prompt-attack filtering is high on input and NONE on output. It anonymizes
+  email, phone, and name and blocks US SSNs and payment-card numbers. This is
+  configured guardrail infrastructure; attachment to agent requests was not
+  established.
+- The reviewed IAM policy permits invocation across foundation-model/* and
+  provisioned-model/* and allows ApplyGuardrail for guardrail resources; no
+  model allowlist is evident in that policy.
+- LiteLLM Docker Compose/AKS/EKS config reviewed contains database settings,
+  not model/content guardrail definitions. Deployment credentials and Nginx
+  routing are access/routing controls, not agent content-safety rules.
+- Build deployment bundles also contain copied prompt YAML with guard lists.
+  These are declarations and may vary by bundle/package (some list Bias only,
+  others broader guard names such as PromptInjection, Toxicity, MaliciousURLs,
+  Anonymization, and Bias). Verify the deployed package/version; declaration
+  alone does not demonstrate runtime enforcement.
+- References:
+  ITOpsToolkit_Build/terraform/aws/LLM AWS BedRock/bedrock.tf:4-59
+  ITOpsToolkit_Build/terraform/aws/LLM AWS BedRock/iam.tf:71-97
+  ITOpsToolkit_Build/dockercompose/ATK/config/litellm_config.yaml:1-2
+  ITOpsToolkit_Build/helm_aks/ITOpstoolkit_LiteLLM/hotfix/litellm-config.yaml:1-2
+  ITOpsToolkit_Build/dockercompose/ATK-MultiHost/ATK Core/docker-compose.yml:148-150
+  ITOpsToolkit_Build/helm_aks/ITOpstoolkit_LiteLLM/values.yaml:77-87
+  ITOpsToolkit_Build/dockercompose/ATK-MultiHost/ATK Core/system_prompts/
+
+RECOMMENDED PRIORITIES
+
+1. Correct guard-name normalization/mapping and add tests asserting which
+   scanners are actually active for every module and deployment bundle.
+2. Make scanner results an explicit decision point: reject, redact, or require
+   review according to defined policy instead of ignoring validity/risk flags.
+3. Enforce tool-level authorization in the MCP server and verify each agent's
+   effective tool set against least-privilege requirements.
+4. Validate LLM outputs against schemas at the backend boundary before using
+   them for ITSM writes; enforce approval on the server for actions that
+   require human review.
+5. Test/verify that configured Bedrock or external gateway guardrails are
+   attached and fail closed on every intended request path; document which
+   policies are active per environment.
+6. Fix the SOP pre-check flow so submission depends on a completed successful
+   check, and validate uploaded content on the server as well as in the UI.
+
+LIMITATIONS
+
+This is a repository-code/configuration inventory, not a penetration test or
+runtime deployment verification. References show where relevant behavior or
+configuration was observed. "Not evident" means it was not established in the
+reviewed paths and should be confirmed against deployed services and runtime
+configuration.
