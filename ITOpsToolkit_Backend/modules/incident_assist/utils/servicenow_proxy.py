@@ -305,24 +305,135 @@ class ServiceNow:
 
         return _cache_put(f"identity::{caller}", (user_sys_id, group_ids))
 
-    def _readable_kb_ids(self, itsm_details, user_sys_id):
-        """Knowledge bases the caller may read, via user_criteria -> kb_uc_can_read_mtom."""
+    def _caller_role_ids(self, itsm_details, user_sys_id):
+        """Resolve the caller's effective ServiceNow roles."""
 
-        cached = _cache_get(f"kb::{user_sys_id}")
+        cache_key = f"roles::{user_sys_id}"
+        cached = _cache_get(cache_key)
         if cached is not None:
             return cached
+
+        role_rows = self._raw_get(
+            itsm_details,
+            "sys_user_has_role",
+            "sysparm_query=" + urllib.parse.quote(f"user={user_sys_id}")
+            + "&sysparm_fields=role&sysparm_exclude_reference_link=true&sysparm_limit=1000"
+        )
+
+        role_ids = set()
+        for row in role_rows:
+            role = row.get("role")
+            if isinstance(role, dict):
+                role = role.get("value")
+            if role:
+                role_ids.add(role)
+
+        return _cache_put(cache_key, sorted(role_ids))
+
+    @staticmethod
+    def _reference_ids(value):
+        if isinstance(value, dict):
+            value = value.get("value")
+        if isinstance(value, list):
+            values = value
+        else:
+            values = str(value or "").split(",")
+
+        ids = set()
+        for item in values:
+            if isinstance(item, dict):
+                item = item.get("value")
+            if item:
+                ids.add(str(item).strip())
+        return ids
+
+    @staticmethod
+    def _criterion_matches_identity(criterion, user_sys_id, group_ids, role_ids):
+        identity = {
+            "user": {user_sys_id},
+            "group": set(group_ids),
+            "role": set(role_ids),
+        }
+
+        configured_fields = []
+        matched_fields = []
+        for field, identities in identity.items():
+            field_ids = ServiceNow._reference_ids(criterion.get(field))
+            if field_ids:
+                configured_fields.append(field)
+                matched_fields.append(bool(field_ids & identities))
+
+        excluded_fields = {
+            "user_not": {user_sys_id},
+            "group_not": set(group_ids),
+            "role_not": set(role_ids),
+        }
+        for field, identities in excluded_fields.items():
+            if ServiceNow._reference_ids(criterion.get(field)) & identities:
+                return False
+
+        # Criteria involving other attributes or scripts need their own
+        # identity inputs/evaluator; fail closed rather than treating them as
+        # equivalent to a matching group or role.
+        unsupported_fields = (
+            "company", "department", "location", "country",
+            "company_not", "department_not", "location_not", "country_not",
+            "script",
+        )
+        if any(criterion.get(field) for field in unsupported_fields):
+            return False
+
+        if not configured_fields:
+            return False
+
+        match_all = str(criterion.get("match_all", "")).strip().lower() in ("true", "1")
+        return all(matched_fields) if match_all else any(matched_fields)
+
+    def _matching_kb_read_criteria(self, itsm_details, user_sys_id, group_ids, role_ids):
+        """Return criteria matching the caller's direct user, group, or role."""
+
+        cache_key = (
+            f"kbcriteria::{user_sys_id}::{','.join(sorted(group_ids))}::"
+            f"{','.join(sorted(role_ids))}"
+        )
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        identity_terms = [f"userLIKE{user_sys_id}"]
+        identity_terms.extend(f"groupLIKE{group_id}" for group_id in group_ids)
+        identity_terms.extend(f"roleLIKE{role_id}" for role_id in role_ids)
+        query = "^OR".join(identity_terms)
 
         criteria = self._raw_get(
             itsm_details,
             "user_criteria",
-            "sysparm_query=" + urllib.parse.quote(f"userLIKE{user_sys_id}")
-            + "&sysparm_fields=sys_id&sysparm_exclude_reference_link=true&sysparm_limit=200"
+            "sysparm_query=" + urllib.parse.quote(query)
+            + "&sysparm_exclude_reference_link=true&sysparm_limit=1000"
         )
 
-        criteria_ids = [c.get("sys_id") for c in criteria if c.get("sys_id")]
+        matching_ids = [
+            criterion["sys_id"]
+            for criterion in criteria
+            if criterion.get("sys_id")
+            and self._criterion_matches_identity(criterion, user_sys_id, group_ids, role_ids)
+        ]
+        return _cache_put(cache_key, matching_ids)
 
+    def _readable_kb_ids(self, itsm_details, user_sys_id, group_ids):
+        """Knowledge bases the caller may read through matching user criteria."""
+
+        role_ids = self._caller_role_ids(itsm_details, user_sys_id)
+        cache_key = f"kb::{user_sys_id}::{','.join(sorted(group_ids))}::{','.join(role_ids)}"
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        criteria_ids = self._matching_kb_read_criteria(
+            itsm_details, user_sys_id, group_ids, role_ids
+        )
         if not criteria_ids:
-            return _cache_put(f"kb::{user_sys_id}", [])
+            return _cache_put(cache_key, [])
 
         mappings = self._raw_get(
             itsm_details,
@@ -339,9 +450,9 @@ class ServiceNow:
             if kb and kb not in kb_ids:
                 kb_ids.append(kb)
 
-        return _cache_put(f"kb::{user_sys_id}", kb_ids)
+        return _cache_put(cache_key, kb_ids)
 
-    def _allowed_kb_ids(self, itsm_details, user_sys_id):
+    def _allowed_kb_ids(self, itsm_details, user_sys_id, group_ids):
         """
         Knowledge bases the caller may read.
 
@@ -352,11 +463,13 @@ class ServiceNow:
              kb_uc_can_read_mtom they can never show up in (1).
         """
 
-        cached = _cache_get(f"kballowed::{user_sys_id}")
+        role_ids = self._caller_role_ids(itsm_details, user_sys_id)
+        cache_key = f"kballowed::{user_sys_id}::{','.join(sorted(group_ids))}::{','.join(role_ids)}"
+        cached = _cache_get(cache_key)
         if cached is not None:
             return cached
 
-        granted = set(self._readable_kb_ids(itsm_details, user_sys_id))
+        granted = set(self._readable_kb_ids(itsm_details, user_sys_id, group_ids))
 
         all_bases = self._raw_get(
             itsm_details,
@@ -379,7 +492,28 @@ class ServiceNow:
             if value:
                 restricted.add(value)
 
-        return _cache_put(f"kballowed::{user_sys_id}", sorted(granted | (all_ids - restricted)))
+        denied = set()
+        criteria_ids = self._matching_kb_read_criteria(
+            itsm_details, user_sys_id, group_ids, role_ids
+        )
+        if criteria_ids:
+            denied_rows = self._raw_get(
+                itsm_details,
+                "kb_uc_cannot_read_mtom",
+                "sysparm_query=" + urllib.parse.quote(
+                    f"user_criteriaIN{','.join(criteria_ids)}"
+                )
+                + "&sysparm_fields=kb_knowledge_base&sysparm_exclude_reference_link=true"
+                "&sysparm_limit=500"
+            )
+            for row in denied_rows:
+                value = row.get("kb_knowledge_base")
+                if isinstance(value, dict):
+                    value = value.get("value")
+                if value:
+                    denied.add(value)
+
+        return _cache_put(cache_key, sorted((granted | (all_ids - restricted)) - denied))
 
     @staticmethod
     def _ownership_clause(table_name, user_sys_id, group_ids):
@@ -428,7 +562,9 @@ class ServiceNow:
             if isinstance(kb_base, dict):
                 kb_base = kb_base.get("value")
 
-            return bool(kb_base) and kb_base in self._allowed_kb_ids(itsm_details, user_sys_id)
+            return bool(kb_base) and kb_base in self._allowed_kb_ids(
+                itsm_details, user_sys_id, group_ids
+            )
 
         # Anything task-derived (incident, problem, sc_request, change_request,
         # sc_req_item, *_task ...) is reachable through the task base table,
@@ -537,7 +673,7 @@ class ServiceNow:
             return self._rebuild_query(pairs, snow_query)
 
         if table_name == KB_TABLE:
-            kb_ids = self._allowed_kb_ids(itsm_details, user_sys_id)
+            kb_ids = self._allowed_kb_ids(itsm_details, user_sys_id, group_ids)
             if not kb_ids:
                 raise ScopeDenied(
                     "You have no readable knowledge bases in ServiceNow.",
